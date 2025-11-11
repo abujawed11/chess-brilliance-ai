@@ -1,0 +1,6 @@
+python-chess==1.999
+pandas==2.2.2
+numpy==1.26.4
+tqdm==4.66.5
+xgboost==2.0.3
+pyarrow==16.1.0
