@@ -65,7 +65,8 @@ def label_move(
     eval_after: float,
     multipv_rank: int,
     is_sacrifice: bool,
-    is_book: bool = False
+    is_book: bool = False,
+    gap_to_second: float = 0
 ) -> str:
     if is_book:
         return "Book"
@@ -74,7 +75,40 @@ def label_move(
     eval_loss = max(0, -eval_change)
 
     # 🟨 Category 1: Brilliance should be checked first
-    if is_sacrifice and eval_loss >= 500 and eval_after < 0 and multipv_rank <= 2:
+    # A brilliant move is a non-obvious sacrifice that dramatically improves the position
+
+    # Case 1: Non-obvious sacrifice - Engine didn't see it (rank ≥5), but position improved dramatically
+    if is_sacrifice and multipv_rank >= 5 and eval_change >= 200:
+        return "Brilliant"
+
+    # Case 2: Top engine sacrifice - maintains/improves position without being already winning
+    if is_sacrifice and multipv_rank <= 2 and eval_change >= 0 and eval_after > -300 and eval_before < 300:
+        return "Brilliant"
+
+    # Case 3: Defensive brilliancy - Turning a losing/bad position into equal or winning
+    # (e.g., sacrifice for stalemate, defensive counterplay)
+    if eval_before <= -200 and eval_after >= -50 and multipv_rank <= 3:
+        return "Brilliant"
+
+    # Case 4: "Only Move" (Forced Brilliancy) - When it's essentially the only good move
+    # Large gap (≥300cp) between best and 2nd best means all other moves are significantly worse
+    if multipv_rank == 1 and gap_to_second >= 300 and eval_change >= 0:
+        return "Brilliant"
+
+    # Case 5: Quiet brilliancy - Non-sacrificial move with massive evaluation swing
+    # (Positional masterpiece, deep quiet move)
+    if not is_sacrifice and multipv_rank <= 3 and eval_change >= 250 and eval_before < 200:
+        return "Brilliant"
+
+    # Case 6: Compensation sacrifice - Small immediate eval loss but strong position
+    # (Long-term positional sacrifice with compensation)
+    if is_sacrifice and multipv_rank <= 2 and -100 <= eval_change < 0 and eval_after >= -150:
+        return "Brilliant"
+
+    # Case 7: Forced tactical sacrifice - Immediate eval drops but it's clearly best
+    # (e.g., Nxe7+ leads to forced mate/winning attack even though immediate eval shows material loss)
+    # Engine strongly prefers this despite temporary eval drop - indicates forced winning sequence
+    if is_sacrifice and multipv_rank == 1 and gap_to_second >= 200 and eval_change < 0:
         return "Brilliant"
 
     # 🟦 Category 2: Great/Excellent

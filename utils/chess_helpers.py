@@ -46,6 +46,12 @@ def analyze_fen_multipv(fen: str, depth: int = 18, multipv: int = 3, hash_mb: in
     """
     proc, send, recv = start_engine({"Hash": hash_mb, "Threads": threads, "MultiPV": multipv})
     try:
+        send("ucinewgame")  # Clear any previous game state
+        send("isready")
+        # Wait for readyok
+        for line in recv():
+            if line == "readyok":
+                break
         send(f"position fen {fen}")
         send(f"go depth {depth}")
         lines = []
@@ -70,7 +76,27 @@ def analyze_fen_multipv(fen: str, depth: int = 18, multipv: int = 3, hash_mb: in
                         pass
             elif line.startswith("bestmove"):
                 break
-        return [results[k] for k in sorted(results.keys())]
+
+        # Sort results by multipv rank
+        sorted_results = [results[k] for k in sorted(results.keys())]
+
+        # Calculate gap between PV#1 and PV#2 (if both exist)
+        if len(sorted_results) >= 2:
+            best_score = sorted_results[0]["score"]
+            second_score = sorted_results[1]["score"]
+
+            # Convert both to centipawns (using a simple conversion)
+            best_cp = best_score["value"] if best_score["type"] == "cp" else (10000 if best_score["value"] > 0 else -10000)
+            second_cp = second_score["value"] if second_score["type"] == "cp" else (10000 if second_score["value"] > 0 else -10000)
+
+            gap = abs(best_cp - second_cp)
+            sorted_results[0]["gap_to_second"] = gap
+        else:
+            # Only one line or no lines
+            if sorted_results:
+                sorted_results[0]["gap_to_second"] = 0
+
+        return sorted_results
     finally:
         try:
             proc.kill()
@@ -82,12 +108,19 @@ def cp_from_score(score: dict, side_to_move: str) -> float:
     Normalize engine score to centipawns from the perspective of side_to_move.
     score like {'type':'cp'|'mate','value':int}
     Positive = good for side_to_move.
+
+    IMPORTANT: UCI engines ALWAYS return scores from White's perspective.
+    We need to flip the sign if side_to_move is Black.
     """
     if score is None:
         return 0.0
+
     if score["type"] == "mate":
         # Mate scores: use large sentinel cp scaled by sign.
-        # Positive value means mating for side_to_move.
-        return 100000 if score["value"] > 0 else -100000
-    # cp value already signed from side-to-move perspective in UCI lines
-    return float(score["value"])
+        mate_value = 100000 if score["value"] > 0 else -100000
+        # Flip sign for Black's perspective
+        return mate_value if side_to_move == 'w' else -mate_value
+
+    # UCI returns from White's perspective, flip for Black
+    cp_value = float(score["value"])
+    return cp_value if side_to_move == 'w' else -cp_value
