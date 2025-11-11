@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Brilliant Move Detector</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    input, button {
+      padding: 8px;
+      margin: 5px 0;
+    }
+    .small-btn {
+      padding: 4px 8px;
+      font-size: 12px;
+      margin-left: 5px;
+      cursor: pointer;
+    }
+    table {
+      margin-top: 20px;
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 8px;
+      border: 1px solid #ccc;
+      text-align: center;
+    }
+    th {
+      background: #f0f0f0;
+    }
+    .fen-cell {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+    .fen-text {
+      word-break: break-word;
+      flex-grow: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Brilliant Move Detector</h2>
+
+  <label for="fen">FEN:</label>
+  <div style="display: flex; gap: 6px;">
+    <input type="text" id="fen" placeholder="Paste FEN string" style="flex-grow: 1;" />
+    <button class="small-btn" onclick="pasteFromClipboard()">📋</button>
+  </div>
+
+  <label for="move">Move (UCI format, e.g. e2e4):</label>
+  <input type="text" id="move" placeholder="Enter move" />
+
+  <button onclick="analyzeMove()">Analyze</button>
+
+  <table id="resultsTable" style="display:none;">
+    <thead>
+      <tr>
+        <th>FEN</th>
+        <th>Move</th>
+        <th>Eval Before</th>
+        <th>Eval After</th>
+        <th>Multipv Rank</th>
+        <th>Sacrifice</th>
+        <th>Label</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+
+  <script>
+    async function pasteFromClipboard() {
+      try {
+        const text = await navigator.clipboard.readText();
+        document.getElementById('fen').value = text;
+      } catch (err) {
+        console.error("Clipboard access denied:", err);
+      }
+    }
+
+    function copyToClipboard(text, button) {
+      navigator.clipboard.writeText(text).then(() => {
+        const original = button.innerHTML;
+        button.innerHTML = "✅";
+        setTimeout(() => {
+          button.innerHTML = original;
+        }, 1000);
+      });
+    }
+
+    function deleteRow(index) {
+      if (!confirm("Are you sure you want to delete this row?")) {
+        return;
+      }
+
+      let history = JSON.parse(localStorage.getItem('brilliantHistory') || '[]');
+      history.splice(index, 1);
+      localStorage.setItem('brilliantHistory', JSON.stringify(history));
+      renderTable(history);
+    }
+
+    function renderTable(history) {
+      const body = document.getElementById('resultsBody');
+      body.innerHTML = '';
+
+      history.forEach((entry, index) => {
+        const row = document.createElement("tr");
+        const fenCell = document.createElement("td");
+        fenCell.innerHTML = `
+          <div class="fen-cell">
+            <span class="fen-text">${entry.fen}</span>
+            <button class="small-btn" onclick="copyToClipboard('${entry.fen}', this)">📋</button>
+          </div>`;
+        row.appendChild(fenCell);
+
+        row.innerHTML += `
+          <td>${entry.move}</td>
+          <td>${entry.eval_before}</td>
+          <td>${entry.eval_after}</td>
+          <td>${entry.multipv_rank}</td>
+          <td>${entry.is_sacrifice ? 'Yes' : 'No'}</td>
+          <td><strong>${entry.label}</strong></td>
+          <td><button class="small-btn" onclick="deleteRow(${index})" style="background-color: #ff4444; color: white;">🗑️</button></td>`;
+        body.appendChild(row);
+      });
+
+      document.getElementById('resultsTable').style.display = history.length > 0 ? 'table' : 'none';
+    }
+
+    function analyzeMove() {
+      const fen = document.getElementById('fen').value.trim();
+      const move = document.getElementById('move').value.trim();
+
+      if (!fen || !move) {
+        alert("Please fill in both fields.");
+        return;
+      }
+
+      fetch('http://127.0.0.1:5000/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fen, move })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.label) {
+          console.error("Invalid response:", data);
+          alert("Failed to analyze move.");
+          return;
+        }
+
+        const entry = {
+          fen,
+          move,
+          eval_before: data.eval_before,
+          eval_after: data.eval_after,
+          multipv_rank: data.multipv_rank,
+          is_sacrifice: data.is_sacrifice,
+          label: data.label
+        };
+
+        let history = JSON.parse(localStorage.getItem('brilliantHistory') || '[]');
+        history.push(entry);
+        localStorage.setItem('brilliantHistory', JSON.stringify(history));
+
+        renderTable(history);
+      })
+      .catch(err => {
+        console.error("Error:", err);
+        alert("Backend error. Is Flask running?");
+      });
+    }
+
+    window.onload = () => {
+      const history = JSON.parse(localStorage.getItem('brilliantHistory') || '[]');
+      renderTable(history);
+    };
+  </script>
+</body>
+</html>
