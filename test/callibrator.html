@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chess.com Calibration Tool</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        body {
+            background: #0b1020;
+            color: #e6eaf2;
+            font-family: system-ui, -apple-system, sans-serif;
+            min-height: 100vh
+        }
+
+        .max-w-7xl {
+            max-width: 80rem
+        }
+
+        .mx-auto {
+            margin-left: auto;
+            margin-right: auto
+        }
+
+        .p-4 {
+            padding: 1rem
+        }
+
+        .px-2 {
+            padding-left: .5rem;
+            padding-right: .5rem
+        }
+
+        .px-3 {
+            padding-left: .75rem;
+            padding-right: .75rem
+        }
+
+        .py-1 {
+            padding-top: .25rem;
+            padding-bottom: .25rem
+        }
+
+        .py-2 {
+            padding-top: .5rem;
+            padding-bottom: .5rem
+        }
+
+        .mt-1 {
+            margin-top: .25rem
+        }
+
+        .mt-2 {
+            margin-top: .5rem
+        }
+
+        .mt-3 {
+            margin-top: .75rem
+        }
+
+        .mt-4 {
+            margin-top: 1rem
+        }
+
+        .mb-2 {
+            margin-bottom: .5rem
+        }
+
+        .my-3 {
+            margin: .75rem 0
+        }
+
+        .w-full {
+            width: 100%
+        }
+
+        .space-y-2>*+* {
+            margin-top: .5rem
+        }
+
+        .space-y-4>*+* {
+            margin-top: 1rem
+        }
+
+        .gap-2 {
+            gap: .5rem
+        }
+
+        .gap-4 {
+            gap: 1rem
+        }
+
+        .flex {
+            display: flex
+        }
+
+        .flex-wrap {
+            flex-wrap: wrap
+        }
+
+        .items-center {
+            align-items: center
+        }
+
+        .justify-center {
+            justify-content: center
+        }
+
+        .justify-between {
+            justify-content: space-between
+        }
+
+        .grid {
+            display: grid
+        }
+
+        .grid-cols-1 {
+            grid-template-columns: repeat(1, minmax(0, 1fr))
+        }
+
+        .grid-cols-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr))
+        }
+
+        .text-xs {
+            font-size: .75rem;
+            line-height: 1rem
+        }
+
+        .text-sm {
+            font-size: .875rem;
+            line-height: 1.25rem
+        }
+
+        .text-lg {
+            font-size: 1.125rem;
+            line-height: 1.75rem
+        }
+
+        .text-2xl {
+            font-size: 1.5rem;
+            line-height: 2rem
+        }
+
+        .font-bold {
+            font-weight: 700
+        }
+
+        .font-semibold {
+            font-weight: 600
+        }
+
+        .font-mono {
+            font-family: ui-monospace, monospace
+        }
+
+        .opacity-70 {
+            opacity: .7
+        }
+
+        .opacity-80 {
+            opacity: .8
+        }
+
+        .opacity-90 {
+            opacity: .9
+        }
+
+        .text-center {
+            text-align: center
+        }
+
+        .text-blue-400 {
+            color: #60a5fa
+        }
+
+        .text-green-400 {
+            color: #4ade80
+        }
+
+        .text-gray-400 {
+            color: #9ca3af
+        }
+
+        .text-red-700 {
+            color: #b91c1c
+        }
+
+        .bg-green-700 {
+            background-color: #15803d
+        }
+
+        .bg-red-700 {
+            background-color: #b91c1c
+        }
+
+        .hover\:bg-green-800:hover {
+            background-color: #166534
+        }
+
+        .hover\:bg-red-800:hover {
+            background-color: #991b1b
+        }
+
+        .border-t {
+            border-top: 1px solid #25304d
+        }
+
+        .card {
+            background: #151a2c;
+            border: 1px solid #25304d;
+            padding: 1rem;
+            border-radius: .75rem
+        }
+
+        .btn {
+            padding: .5rem .75rem;
+            border-radius: .5rem;
+            background: #223057;
+            color: #e6eaf2;
+            cursor: pointer;
+            border: none;
+            font-size: inherit;
+            display: inline-block
+        }
+
+        .btn:hover {
+            background: #2b3b6f
+        }
+
+        .btn:disabled {
+            opacity: .5;
+            cursor: not-allowed
+        }
+
+        .rounded {
+            border-radius: .25rem
+        }
+
+        .rounded-lg {
+            border-radius: .5rem
+        }
+
+        .rounded-xl {
+            border-radius: .75rem
+        }
+
+        .overflow-x-auto {
+            overflow-x: auto
+        }
+
+        .pt-3 {
+            padding-top: .75rem
+        }
+
+        .block {
+            display: block
+        }
+
+        select,
+        input[type="text"],
+        input[type="number"],
+        input[type="file"],
+        textarea {
+            color: #e6eaf2;
+            background: #0f1427;
+            border: 1px solid #2b3b6f;
+            padding: .5rem .75rem;
+            border-radius: .5rem;
+            width: 100%
+        }
+
+        textarea {
+            resize: vertical;
+            font-family: ui-monospace, monospace
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse
+        }
+
+        th,
+        td {
+            border-bottom: 1px solid #25304d;
+            padding: 8px 10px;
+            text-align: left
+        }
+
+        thead {
+            opacity: .8
+        }
+
+        @media (min-width:1024px) {
+            .lg\:grid-cols-2 {
+                grid-template-columns: repeat(2, minmax(0, 1fr))
+            }
+
+            .lg\:grid-cols-3 {
+                grid-template-columns: repeat(3, minmax(0, 1fr))
+            }
+        }
+    </style>
+</head>
+
+<body class="min-h-screen">
+    <div class="max-w-7xl mx-auto p-4 space-y-4">
+        <h1 class="text-2xl font-bold">Chess.com Calibration Tool</h1>
+
+        <!-- Controls -->
+        <div class="card p-4 rounded-xl grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div class="space-y-2">
+                <label class="block text-sm opacity-80">Upload PGN File</label>
+                <input id="pgnFile" type="file" accept=".pgn,.txt" class="w-full" />
+                <label class="block text-sm opacity-80 mt-3">Or Paste PGN</label>
+                <textarea id="pgnText" class="w-full px-3 py-2 rounded-lg font-mono text-xs" rows="3"
+                    placeholder="Paste PGN here..."></textarea>
+                <button id="loadPGN" class="btn mt-2 w-full">Load PGN</button>
+
+                <div class="border-t border-[#25304d] my-3 pt-3">
+                    <label class="block text-sm opacity-80">Or Load FEN Position</label>
+                    <input id="fenInput" type="text" class="w-full px-3 py-2 rounded-lg font-mono text-xs mt-1"
+                        placeholder="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" />
+                    <button id="loadFEN" class="btn mt-2 w-full">Set Position</button>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm opacity-80">Engine API endpoint (POST /evaluate)</label>
+                <input id="apiEndpoint" type="text" class="w-full px-3 py-2 rounded-lg"
+                    placeholder="http://localhost:5000/evaluate" value="http://localhost:5000/evaluate" />
+                <div class="grid grid-cols-2 gap-2 mt-2">
+                    <div>
+                        <label class="block text-xs opacity-70">Depth</label>
+                        <input id="depth" type="number" min="10" max="40" value="22" class="w-full px-2 py-1 rounded" />
+                    </div>
+                    <div>
+                        <label class="block text-xs opacity-70">MultiPV (before)</label>
+                        <input id="multipv" type="number" min="1" max="10" value="5" class="w-full px-2 py-1 rounded" />
+                    </div>
+                </div>
+                <button id="toggleEngine" class="btn mt-2 w-full bg-green-700 hover:bg-green-800">Start Analysis
+                    Engine</button>
+                <div id="engineStatus" class="text-xs opacity-70 mt-1 text-center">Engine: Stopped</div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm opacity-80">Label for Next Logged Move</label>
+                <select id="labelSelect" class="w-full px-3 py-2 rounded-lg" style="font-weight:600;font-size:1rem;">
+                    <option>Brilliant</option>
+                    <option>Great</option>
+                    <option selected>Best</option>
+                    <option>Excellent</option>
+                    <option>Good</option>
+                    <option>Book</option>
+                    <option>Inaccuracy</option>
+                    <option>Mistake</option>
+                    <option>Miss</option>
+                    <option>Blunder</option>
+                </select>
+                <div class="text-xs opacity-70 text-center">⚠️ Select label BEFORE clicking "Log Current Move"</div>
+                <button id="saveJSON" class="btn mt-2 w-full">Download JSON</button>
+            </div>
+        </div>
+
+        <!-- Board + Move controls -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="card p-4 rounded-xl">
+                <div id="board" style="width:480px;max-width:100%;margin:0 auto;"></div>
+                <div class="flex flex-wrap gap-2 justify-center mt-4">
+                    <button id="firstBtn" class="btn">⏮ First</button>
+                    <button id="prevBtn" class="btn">◀ Prev</button>
+                    <button id="nextBtn" class="btn">Next ▶</button>
+                    <button id="lastBtn" class="btn">Last ⏭</button>
+                    <button id="logBtn" class="btn">Log Current Move</button>
+                </div>
+                <div class="mt-4 text-sm opacity-90">
+                    <div>Move index: <span id="moveIndex">0</span>/<span id="totalMoves">0</span></div>
+                    <div>Current move (SAN): <span id="currentSan">-</span></div>
+                    <div>Current move (UCI): <span id="currentUci">-</span></div>
+                    <div class="mt-2 text-xs" id="modeIndicator">
+                        <span class="opacity-70">Mode:</span> <span id="modeText" class="font-semibold">PGN
+                            Navigation</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live eval panel -->
+            <div class="card p-4 rounded-xl space-y-2">
+                <h2 class="text-lg font-semibold">Engine Features (current half-move)</h2>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div class="opacity-80">Eval Before (cp):</div>
+                    <div id="evalBefore">-</div>
+                    <div class="opacity-80">Eval After (cp):</div>
+                    <div id="evalAfter">-</div>
+                    <div class="opacity-80">Δ Eval (cp):</div>
+                    <div id="evalChange">-</div>
+                    <div class="opacity-80">CPL (loss):</div>
+                    <div id="cpl">-</div>
+                    <div class="opacity-80">MultiPV Rank:</div>
+                    <div id="rank">-</div>
+                    <div class="opacity-80">Top Gap (cp):</div>
+                    <div id="gap">-</div>
+                    <div class="opacity-80">Is Sacrifice?</div>
+                    <div id="isSacrifice">-</div>
+                    <div class="opacity-80">Mate Before?</div>
+                    <div id="mateBefore">-</div>
+                    <div class="opacity-80">Mate After?</div>
+                    <div id="mateAfter">-</div>
+                    <div class="opacity-80">Best Mate-in:</div>
+                    <div id="bestMateIn">-</div>
+                    <div class="opacity-80">Played Mate-in:</div>
+                    <div id="playedMateIn">-</div>
+                    <div class="opacity-80">Missed Mate?</div>
+                    <div id="missMate">-</div>
+
+                    <div class="opacity-80">Mate Flip?</div>
+                    <div id="mateFlip">-</div>
+
+
+                    <div class="opacity-80">Phase:</div>
+                    <div id="phaseTag">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logged rows table -->
+        <div class="card p-4 rounded-xl overflow-x-auto">
+            <div class="flex items-center justify-between mb-2">
+                <h2 class="text-lg font-semibold">Logged Samples <span id="sampleCount"
+                        class="text-sm opacity-70">(0)</span></h2>
+                <div class="flex gap-2 items-center">
+                    <div class="text-xs opacity-70">Click a label cell to change the label.</div>
+                    <button onclick="clearAllSamples()" class="btn text-xs px-2 py-1 bg-red-700 hover:bg-red-800">Clear
+                        All</button>
+                </div>
+            </div>
+            <table class="text-sm">
+                <thead class="opacity-80">
+                    <tr>
+                        <th>#</th>
+                        <th>FEN</th>
+                        <th>Move</th>
+                        <th>Chess.com Label</th>
+                        <th>Eval Before</th>
+                        <th>Eval After</th>
+                        <th>CPL</th>
+                        <th>Top Gap</th>
+                        <th>Rank</th>
+                        <th>Sacrifice?</th>
+                        <th>Mate Before</th>
+                        <th>Mate After</th>
+                        <th>Best Mate-in</th>
+                        <th>Played Mate-in</th>
+                        <th>Missed Mate?</th>
+                        <th>Mate Flip?</th>
+                        <th>Missed Mate?</th>
+
+                        <th>Phase</th>
+                    </tr>
+                </thead>
+                <tbody id="logBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const LABELS = ["Brilliant", "Great", "Best", "Excellent", "Good", "Book", "Inaccuracy", "Mistake", "Miss", "Blunder"];
+
+        function uciFromVerbose(mv) { let u = mv.from + mv.to; if (mv.promotion) u += mv.promotion; return u; }
+        function phaseFromMaterial(ch) {
+            const pieces = ch.board().flat().filter(Boolean);
+            let minors = 0, majors = 0;
+            for (const p of pieces) { if (p.type === 'n' || p.type === 'b') minors++; else if (p.type === 'r' || p.type === 'q') majors++; }
+            if (majors <= 1 && minors <= 2) return 'endgame';
+            if (majors >= 3) return 'middlegame';
+            return 'opening';
+        }
+        function download(filename, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = filename; a.click(); URL.revokeObjectURL(a.href); }
+
+        let chess = new Chess();
+        let board = null;
+        let fullMoveList = [];
+        let moveIndex = 0;
+        let samples = [];
+        let engineRunning = false;
+        let lastEvaluatedData = null;
+        let initialFen = null;
+
+        const STORAGE_KEY = 'chess_calibration_samples';
+        function updateSampleCount() { document.getElementById('sampleCount').textContent = `(${samples.length})`; }
+        function loadSamplesFromStorage() {
+            try {
+                const s = localStorage.getItem(STORAGE_KEY);
+                if (s) { samples = JSON.parse(s); samples.forEach(appendRow); updateSampleCount(); }
+            } catch (e) { console.error(e); samples = []; }
+        }
+        function saveSamplesToStorage() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(samples)); updateSampleCount(); } catch (e) { console.error(e); } }
+        function clearAllSamples() {
+            if (confirm('Clear all logged samples?')) { samples = []; localStorage.removeItem(STORAGE_KEY); document.getElementById('logBody').innerHTML = ''; updateSampleCount(); }
+        }
+
+        function updateModeIndicator() {
+            const modeText = document.getElementById('modeText');
+            if (fullMoveList.length > 0) { modeText.textContent = 'PGN Navigation'; modeText.className = 'font-semibold text-blue-400'; }
+            else if (initialFen) { modeText.textContent = 'FEN Manual Play (Click pieces)'; modeText.className = 'font-semibold text-green-400'; }
+            else { modeText.textContent = 'Ready (Load PGN or FEN)'; modeText.className = 'font-semibold text-gray-400'; }
+        }
+
+        function renderBoard() {
+            board.position(chess.fen());
+            document.getElementById('moveIndex').textContent = moveIndex;
+            document.getElementById('totalMoves').textContent = fullMoveList.length;
+            const mv = fullMoveList[moveIndex] || null;
+            document.getElementById('currentSan').textContent = mv ? mv.san : '-';
+            document.getElementById('currentUci').textContent = mv ? uciFromVerbose(mv) : '-';
+            updateModeIndicator();
+        }
+
+        async function callEvaluate(fen, uci) {
+            const endpoint = document.getElementById('apiEndpoint').value.trim();
+            const depth = parseInt(document.getElementById('depth').value || 22, 10);
+            const multipv = parseInt(document.getElementById('multipv').value || 5, 10);
+            try {
+                const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fen, move: uci, depth, multipv }) });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return await r.json();
+            } catch (e) { console.warn('Evaluate failed', e); return null; }
+        }
+
+        function setLivePanel(data) {
+            const eb = document.getElementById('evalBefore');
+            const ea = document.getElementById('evalAfter');
+            const ec = document.getElementById('evalChange');
+            const cpl = document.getElementById('cpl');
+            const rk = document.getElementById('rank');
+            const gp = document.getElementById('gap');
+            const sac = document.getElementById('isSacrifice');
+            const mb = document.getElementById('mateBefore');
+            const ma = document.getElementById('mateAfter');
+            const ph = document.getElementById('phaseTag');
+
+            const bmi = document.getElementById('bestMateIn');
+            const pmi = document.getElementById('playedMateIn');
+            const mm = document.getElementById('missMate');
+
+            // NEW: mate fields
+            const bestMIEl = document.getElementById('bestMateIn');
+            const playedMIEl = document.getElementById('playedMateIn');
+            const missMateEl = document.getElementById('missMate');
+            const mateFlipEl = document.getElementById('mateFlip'); // NEW
+
+
+            if (!data) { [eb, ea, ec, cpl, rk, gp, sac, mb, ma].forEach(x => x.textContent = '-'); ph.textContent = '-'; return; }
+
+            const eval_before = Number(data.eval_before || 0);
+            const eval_after = Number(data.eval_after || 0);
+            const eval_change = Number(data.eval_change ?? (eval_after - eval_before));
+
+            // Use server CPL when provided, else fallback to |before - playedEval|
+            const cplLoss = (data.cpl != null) ? Number(data.cpl) : Math.max(0, eval_before - eval_after);
+
+            eb.textContent = eval_before.toFixed(1);
+            ea.textContent = eval_after.toFixed(1);
+            ec.textContent = eval_change.toFixed(1);
+            cpl.textContent = cplLoss.toFixed(1);
+
+            rk.textContent = (data.multipv_rank ?? '-');
+            gp.textContent = (data.top_gap == null ? '—' : Number(data.top_gap).toFixed(1));
+            sac.textContent = data.is_sacrifice ? 'Yes' : 'No';
+
+            const isMateB = data.eval_before_struct?.type === 'mate';
+            const isMateA = data.eval_after_struct?.type === 'mate';
+            mb.textContent = isMateB ? 'Yes' : 'No';
+            ma.textContent = isMateA ? 'Yes' : 'No';
+
+            ph.textContent = phaseFromMaterial(chess);
+
+            // NEW: show mate meta
+            if (bestMIEl) bestMIEl.textContent = (data.best_mate_in ?? '—');
+            if (playedMIEl) playedMIEl.textContent = (data.played_mate_in ?? '—');
+            if (missMateEl) missMateEl.textContent = data.miss_mate ? 'Yes' : 'No';
+            if (mateFlipEl) mateFlipEl.textContent = data.mate_flip ? 'Yes' : 'No';
+
+        }
+
+        function appendRow(sample) {
+            const tbody = document.getElementById('logBody');
+            const tr = document.createElement('tr');
+            const idx = tbody.children.length;
+            const displayIdx = idx + 1;
+            tr.innerHTML = `
+        <td class="opacity-80">${displayIdx}</td>
+        <td class="font-mono text-xs">${sample.fen}</td>
+        <td class="font-mono">${sample.move}</td>
+        <td>
+          <select class="px-2 py-1 rounded bg-[#0f1427] border border-[#2b3b6f]">
+            ${LABELS.map(l => `<option ${l === sample.chesscom_label ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </td>
+        <td>${sample.eval_before_cp.toFixed(1)}</td>
+        <td>${sample.eval_after_cp.toFixed(1)}</td>
+        <td>${(sample.cpl ?? 0).toFixed(1)}</td>
+        <td>${sample.top_gap == null ? '—' : sample.top_gap.toFixed(1)}</td>
+        <td>${sample.multipv_rank}</td>
+        <td>${sample.is_sacrifice ? 'Yes' : 'No'}</td>
+        <td>${sample.is_mate_before ? 'Yes' : 'No'}</td>
+        <td>${sample.is_mate_after ? 'Yes' : 'No'}</td>
+        <td>${sample.best_mate_in ?? '—'}</td>
+        <td>${sample.played_mate_in ?? '—'}</td>
+        <td>${sample.miss_mate ? 'Yes' : 'No'}</td>
+        <td>${sample.mate_flip ? 'Yes' : 'No'}</td>
+        <td>${sample.phase}</td>`;
+            const sel = tr.querySelector('select');
+            sel.addEventListener('change', () => { samples[idx].chesscom_label = sel.value; saveSamplesToStorage(); });
+            tbody.appendChild(tr);
+        }
+
+        async function toggleEngine() {
+            const btn = document.getElementById('toggleEngine');
+            const status = document.getElementById('engineStatus');
+            const baseUrl = document.getElementById('apiEndpoint').value.replace('/evaluate', '');
+
+            if (!engineRunning) {
+                btn.disabled = true; btn.textContent = 'Starting...';
+                try {
+                    const r = await fetch(`${baseUrl}/start_engine`, { method: 'POST' });
+                    const data = await r.json();
+                    if (data.status === 'started' || data.status === 'already_running') {
+                        engineRunning = true; btn.textContent = 'Stop Analysis Engine';
+                        btn.classList.remove('bg-green-700', 'hover:bg-green-800');
+                        btn.classList.add('bg-red-700', 'hover:bg-red-800');
+                        status.textContent = 'Engine: Running'; status.classList.add('text-green-400');
+                    } else { alert('Failed to start engine: ' + data.message); btn.textContent = 'Start Analysis Engine'; }
+                } catch (e) { alert('Error starting engine: ' + e.message); btn.textContent = 'Start Analysis Engine'; }
+                btn.disabled = false;
+            } else {
+                btn.disabled = true; btn.textContent = 'Stopping...';
+                try {
+                    const r = await fetch(`${baseUrl}/stop_engine`, { method: 'POST' });
+                    const data = await r.json();
+                    if (data.status === 'stopped' || data.status === 'not_running') {
+                        engineRunning = false; btn.textContent = 'Start Analysis Engine';
+                        btn.classList.remove('bg-red-700', 'hover:bg-red-800');
+                        btn.classList.add('bg-green-700', 'hover:bg-green-800');
+                        status.textContent = 'Engine: Stopped'; status.classList.remove('text-green-400');
+                    } else { alert('Failed to stop engine: ' + data.message); btn.textContent = 'Stop Analysis Engine'; }
+                } catch (e) { alert('Error stopping engine: ' + e.message); btn.textContent = 'Stop Analysis Engine'; }
+                btn.disabled = false;
+            }
+        }
+        document.getElementById('toggleEngine').addEventListener('click', toggleEngine);
+
+        // PGN / FEN loaders
+        document.getElementById('loadPGN').addEventListener('click', async () => {
+            let text = '';
+            const f = document.getElementById('pgnFile').files?.[0];
+            text = f ? await f.text() : document.getElementById('pgnText').value.trim();
+            if (!text) { alert('Please paste PGN or select a PGN file.'); return; }
+
+            const tmp = new Chess(); const ok = tmp.load_pgn(text, { sloppy: true });
+            if (!ok) { alert('Failed to parse PGN.'); return; }
+            fullMoveList = tmp.history({ verbose: true });
+            chess = new Chess(); initialFen = null; moveIndex = 0;
+            renderBoard(); setLivePanel(null); lastEvaluatedData = null;
+            selectedSquare = null; legalMovesFromSquare = []; removeHighlights();
+            alert(`PGN loaded. ${fullMoveList.length} moves found.`);
+        });
+
+        document.getElementById('loadFEN').addEventListener('click', () => {
+            const fen = document.getElementById('fenInput').value.trim();
+            if (!fen) { alert('Please enter a FEN.'); return; }
+            const tmp = new Chess(); const v = tmp.validate_fen(fen);
+            if (!v.valid) { alert(`Invalid FEN: ${v.error || 'Unknown'}`); return; }
+            chess = new Chess(fen); initialFen = fen; fullMoveList = []; moveIndex = 0;
+            renderBoard(); setLivePanel(null); lastEvaluatedData = null;
+            selectedSquare = null; legalMovesFromSquare = []; removeHighlights();
+            alert('FEN loaded. Click a piece to play.');
+        });
+
+        document.getElementById('firstBtn').addEventListener('click', () => {
+            chess = new Chess(initialFen || undefined); moveIndex = 0; renderBoard(); setLivePanel(null);
+            lastEvaluatedData = null; selectedSquare = null; legalMovesFromSquare = []; removeHighlights();
+        });
+        document.getElementById('lastBtn').addEventListener('click', () => {
+            chess = new Chess(); for (let i = 0; i < fullMoveList.length; i++) chess.move(fullMoveList[i]);
+            moveIndex = fullMoveList.length; renderBoard(); setLivePanel(null);
+            selectedSquare = null; legalMovesFromSquare = []; removeHighlights();
+        });
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            if (moveIndex <= 0) return; chess.undo(); moveIndex--; renderBoard(); setLivePanel(null);
+            selectedSquare = null; legalMovesFromSquare = []; removeHighlights();
+        });
+
+        document.getElementById('nextBtn').addEventListener('click', async () => {
+            if (moveIndex >= fullMoveList.length) return;
+            const mv = fullMoveList[moveIndex];
+            const fenBefore = chess.fen();
+            const uci = uciFromVerbose(mv);
+            const data = await callEvaluate(fenBefore, uci);
+            lastEvaluatedData = data;
+            chess.move(mv); moveIndex++; renderBoard(); setLivePanel(data);
+            selectedSquare = null; legalMovesFromSquare = []; removeHighlights();
+        });
+
+        document.getElementById('logBtn').addEventListener('click', () => {
+            if (!lastEvaluatedData) { alert('Play a move first.'); return; }
+            const sel = document.getElementById('labelSelect');
+
+            // Pull authoritative values from server:
+            const eb = Number(lastEvaluatedData.eval_before);
+            const ea = Number(lastEvaluatedData.eval_after);
+            const cplVal = (lastEvaluatedData.cpl != null) ? Number(lastEvaluatedData.cpl) : Math.max(0, eb - ea);
+            const rank = lastEvaluatedData.multipv_rank;
+            const gap = lastEvaluatedData.top_gap; // may be null
+            const isSac = !!lastEvaluatedData.is_sacrifice;
+            const isMateB = lastEvaluatedData.eval_before_struct?.type === 'mate';
+            const isMateA = lastEvaluatedData.eval_after_struct?.type === 'mate';
+            const fenBefore = lastEvaluatedData.fen_before;
+
+            const moveUci = document.getElementById('currentUci').textContent;
+            if (moveUci === '-') { alert('No move to log.'); return; }
+
+            const phaseBefore = phaseFromMaterial(new Chess(fenBefore));
+
+            const sample = {
+                fen: fenBefore, move: moveUci, chesscom_label: sel.value,
+                eval_before_cp: eb, eval_after_cp: ea,
+                cpl: cplVal, top_gap: gap, multipv_rank: rank,
+                is_sacrifice: isSac, is_mate_before: isMateB, is_mate_after: isMateA,
+                phase: phaseBefore,
+                // best_mate_in: lastEvaluatedData.best_mate_in ?? null,
+                // played_mate_in: lastEvaluatedData.played_mate_in ?? null,
+                // miss_mate: lastEvaluatedData.miss_mate ?? false,
+                // mate_miss_severity: lastEvaluatedData.mate_miss_severity ?? 0
+                // NEW: mate metadata
+                best_mate_in: lastEvaluatedData.best_mate_in ?? null,
+                played_mate_in: lastEvaluatedData.played_mate_in ?? null,
+                miss_mate: !!lastEvaluatedData.miss_mate,
+                mate_miss_severity: lastEvaluatedData.mate_miss_severity ?? 0,
+                mate_flip: !!lastEvaluatedData.mate_flip,
+
+            };
+            samples.push(sample); appendRow(sample); saveSamplesToStorage();
+        });
+
+        document.getElementById('saveJSON').addEventListener('click', () => {
+            if (samples.length === 0) { alert('No rows logged yet.'); return; }
+            download('calibration_samples.json', JSON.stringify(samples, null, 2));
+        });
+
+        // --- Click-to-play for FEN mode ---
+        let selectedSquare = null; let legalMovesFromSquare = [];
+        function removeHighlights() { document.querySelectorAll('#board .square-55d63').forEach(s => s.style.backgroundColor = ''); }
+        function highlightSquare(square, color) { const el = document.querySelector(`#board .square-${square}`); if (el) el.style.backgroundColor = color; }
+        function getLegalMoves(square) { return chess.moves({ square, verbose: true }).map(m => m.to); }
+        function getSquareFromElement(el) {
+            let cur = el; while (cur && cur !== document.body) {
+                if (cur.className && typeof cur.className === 'string') {
+                    for (let cls of cur.className.split(' ')) { if (cls.startsWith('square-') && cls.length === 9) { const sq = cls.replace('square-', ''); if (sq.length === 2) return sq; } }
+                }
+                cur = cur.parentElement;
+            } return null;
+        }
+        async function onSquareClick(e) {
+            if (fullMoveList.length > 0) return; // PGN playback mode
+            const square = getSquareFromElement(e.target); if (!square) return;
+            const piece = chess.get(square);
+
+            if (!piece) {
+                if (selectedSquare && legalMovesFromSquare.includes(square)) { await makeMove(selectedSquare, square); }
+                selectedSquare = null; legalMovesFromSquare = []; removeHighlights(); return;
+            }
+
+            if (selectedSquare && legalMovesFromSquare.includes(square)) {
+                await makeMove(selectedSquare, square); selectedSquare = null; legalMovesFromSquare = []; removeHighlights(); return;
+            }
+
+            if ((chess.turn() === 'w' && piece.color === 'b') || (chess.turn() === 'b' && piece.color === 'w')) {
+                selectedSquare = null; legalMovesFromSquare = []; removeHighlights(); return;
+            }
+
+            selectedSquare = square; legalMovesFromSquare = getLegalMoves(square);
+            removeHighlights(); highlightSquare(square, '#ffff00'); legalMovesFromSquare.forEach(s => highlightSquare(s, '#90EE90'));
+        }
+        function attachBoardClickHandlers() {
+            setTimeout(() => { document.querySelectorAll('#board .square-55d63').forEach(s => s.addEventListener('click', onSquareClick)); }, 500);
+        }
+
+        async function makeMove(from, to) {
+            const fenBefore = chess.fen();
+            const move = chess.move({ from, to, promotion: 'q' });
+            if (move === null) { console.error('Illegal move', from, to); return; }
+            const uci = move.from + move.to + (move.promotion || '');
+            const data = await callEvaluate(fenBefore, uci);
+            lastEvaluatedData = data; setLivePanel(data);
+            removeHighlights(); renderBoard();
+            document.getElementById('currentSan').textContent = move.san;
+            document.getElementById('currentUci').textContent = uci;
+            highlightSquare(from, '#FFD700'); highlightSquare(to, '#FFD700');
+        }
+
+        board = Chessboard('board', { position: 'start', pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png' });
+        renderBoard(); attachBoardClickHandlers(); loadSamplesFromStorage();
+    </script>
+</body>
+
+</html>

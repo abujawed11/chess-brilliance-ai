@@ -8,6 +8,59 @@ import shlex
 
 ENGINE_PATH = os.getenv("STOCKFISH_PATH", os.path.join("engine", "stockfish.exe" if os.name=="nt" else "stockfish"))
 
+# Constants for normalization
+CP_MAX = 3000  # Maximum centipawn value before mate territory
+MATE_BASE = CP_MAX + 100  # Mate scores start just above CP_MAX
+
+def to_root_cp(score, root_turn, node_turn):
+    """
+    Normalize a typed score to centipawns from root player's perspective.
+
+    Args:
+        score: dict with {'type': 'cp'|'mate', 'value': int}
+        root_turn: bool - True if root position is White's turn
+        node_turn: bool - True if node position is White's turn
+
+    Returns:
+        float: normalized centipawns from root player's perspective
+        - CP scores: direct UCI value, flipped if needed
+        - Mate scores: mapped to MATE_BASE ± (sign * DTM), bounded
+    """
+    if score is None:
+        return 0.0
+
+    # UCI always returns from White's perspective
+    raw_value = score.get("value", 0)
+    score_type = score.get("type", "cp")
+
+    if score_type == "mate":
+        # Mate in N moves
+        # Positive = white mates, negative = black mates
+        # Map to CP scale: closer mate = higher score
+        if raw_value > 0:
+            # White mates in raw_value moves
+            cp_value = MATE_BASE + (100 - min(raw_value, 100))
+        else:
+            # Black mates in abs(raw_value) moves
+            cp_value = -(MATE_BASE + (100 - min(abs(raw_value), 100)))
+    else:
+        # Regular centipawn score
+        cp_value = float(raw_value)
+
+    # Flip perspective if needed
+    # If root is White and node is White: no flip (same perspective)
+    # If root is White and node is Black: flip (opponent's perspective)
+    # If root is Black and node is White: flip
+    # If root is Black and node is Black: no flip
+    if root_turn != node_turn:
+        cp_value = -cp_value
+
+    # If root is Black, flip everything to get Black's perspective
+    if not root_turn:
+        cp_value = -cp_value
+
+    return cp_value
+
 def start_engine(extra_options=None):
     """
     Start Stockfish as a subprocess with pipes.
@@ -38,6 +91,58 @@ def start_engine(extra_options=None):
         if line == "readyok":
             break
     return proc, send, recv
+
+def analyze_fen_multipv_persistent(fen: str, engine_tuple, depth: int = 18, multipv: int = 3):
+    """
+    Analyze position using a persistent engine (proc, send, recv).
+    Returns list of dicts: [{'multipv':1,'score':{'type':'cp'|'mate','value':int},'pv':[SAN/UCI? raw tokens]}, ...]
+    """
+    proc, send, recv = engine_tuple
+    send("ucinewgame")
+    # Set MultiPV for this search
+    send(f"setoption name MultiPV value {multipv}")
+    send("isready")
+    # Wait for readyok
+    for line in recv():
+        if line == "readyok":
+            break
+    send(f"position fen {fen}")
+    send(f"go depth {depth}")
+    lines = []
+    results = {}
+    for line in recv():
+        if line.startswith("info "):
+            parts = line.split()
+            if "multipv" in parts and "score" in parts and "pv" in parts:
+                try:
+                    mpv = int(parts[parts.index("multipv")+1])
+                    sc_idx = parts.index("score")
+                    sc_type = parts[sc_idx+1]
+                    sc_val = int(parts[sc_idx+2])
+                    pv_idx = parts.index("pv")
+                    pv_moves = parts[pv_idx+1:]
+                    results[mpv] = {"multipv": mpv, "score": {"type": sc_type, "value": sc_val}, "pv": pv_moves}
+                except Exception:
+                    pass
+        elif line.startswith("bestmove"):
+            break
+
+    # Sort results by multipv rank
+    sorted_results = [results[k] for k in sorted(results.keys())]
+
+    # Calculate gap between PV#1 and PV#2 (legacy, not used in new code)
+    if len(sorted_results) >= 2:
+        best_score = sorted_results[0]["score"]
+        second_score = sorted_results[1]["score"]
+        best_cp = best_score["value"] if best_score["type"] == "cp" else (10000 if best_score["value"] > 0 else -10000)
+        second_cp = second_score["value"] if second_score["type"] == "cp" else (10000 if second_score["value"] > 0 else -10000)
+        gap = abs(best_cp - second_cp)
+        sorted_results[0]["gap_to_second"] = gap
+    else:
+        if sorted_results:
+            sorted_results[0]["gap_to_second"] = 0
+
+    return sorted_results
 
 def analyze_fen_multipv(fen: str, depth: int = 18, multipv: int = 3, hash_mb: int = 256, threads: int = 2):
     """

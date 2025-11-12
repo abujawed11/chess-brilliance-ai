@@ -1,0 +1,16 @@
+[
+  {
+    "fen": "5k2/p1r2p2/1p3P2/4N3/n6P/8/PPq5/K3R1R1 w - - 0 1",
+    "move": "e5d7",
+    "chesscom_label": "Brilliant",
+    "eval_before_cp": 3197,
+    "eval_after_cp": 3198,
+    "cpl": 0,
+    "top_gap": 0,
+    "multipv_rank": 1,
+    "is_sacrifice": true,
+    "is_mate_before": true,
+    "is_mate_after": true,
+    "phase": "middlegame"
+  }
+]

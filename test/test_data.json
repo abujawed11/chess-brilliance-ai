@@ -1,0 +1,76 @@
+
+
+[
+  {
+    "name": "Black rook sacrifice c8c1",
+    "fen": "1kr5/8/4p3/p3P3/1p5P/3p4/PP2qQ2/1K3R2 b - - 0 1",
+    "move": "c8c1",
+    "expected_label": "Brilliant",
+    "source": "chess.com",
+    "description": "Non-obvious rook sacrifice that wins"
+  },
+  {
+    "name": "White knight sacrifice d5e7",
+    "fen": "4r1k1/5ppp/r1q2n2/p1pNnQ2/PpP1P3/1P4R1/2B3PP/3R2K1 w - - 0 1",
+    "move": "d6c7",
+    "expected_label": "Brilliant",
+    "source": "chess.com",
+    "description": "Forced tactical sacrifice with immediate eval drop"
+  },
+   {
+    "name": "White knight sacrifice d5e7",
+    "fen": "8/pQ3ppk/3q3p/5b2/8/P3P3/1P3PPP/n1KN1B1R b - - 0 1",
+    "move": "d5e7",
+    "expected_label": "Brilliant",
+    "source": "chess.com",
+    "description": "Forced tactical sacrifice with immediate eval drop"
+  },
+  {
+    "name": "CRITICAL: Hanging queen blunder",
+    "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPPQPPP/RNB1KBNR w KQkq - 0 1",
+    "move": "e2e5",
+    "expected_label": "Blunder",
+    "source": "manual",
+    "description": "Hanging the queen - should NEVER be brilliant"
+  },
+  {
+    "name": "CRITICAL: Moving into checkmate",
+    "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 1",
+    "move": "h5f7",
+    "expected_label": "Blunder",
+    "source": "manual",
+    "description": "Checkmate in 1 - absolutely should not be brilliant"
+  },
+  {
+    "name": "Standard book move",
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+    "move": "g8f6",
+    "expected_label": "Best",
+    "source": "manual",
+    "description": "Standard book move"
+  },
+  {
+    "name": "Inaccuracy - small mistake",
+    "fen": "rnbqkb1r/pppppppp/5n2/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1",
+    "move": "b1c3",
+    "expected_label": "Good",
+    "source": "manual",
+    "description": "Decent development, not the best"
+  },
+  {
+    "name": "EDGE CASE: Sacrifice in already winning position",
+    "fen": "8/8/8/8/8/2k5/1q6/K1Q5 w - - 0 1",
+    "move": "c1c3",
+    "expected_label": "Blunder",
+    "source": "manual",
+    "description": "Sacrificing queen when already winning - should not be brilliant"
+  },
+  {
+    "name": "EDGE CASE: Defensive stalemate trick",
+    "fen": "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1",
+    "move": "h8g8",
+    "expected_label": "Best",
+    "source": "manual",
+    "description": "Only move to avoid immediate checkmate"
+  }
+]
