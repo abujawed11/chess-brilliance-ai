@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Engine Connection Test</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0b1020;
+            color: #e6eaf2;
+        }
+        h1 { color: #60a5fa; }
+        .test-box {
+            background: #151a2c;
+            border: 2px solid #25304d;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .success { background: #166534; color: #4ade80; }
+        .error { background: #991b1b; color: #fca5a5; }
+        .pending { background: #854d0e; color: #fde047; }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover { background: #1d4ed8; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .code {
+            background: #0f1427;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        pre { margin: 0; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Engine Connection Diagnostic</h1>
+    
+    <div class="test-box">
+        <h2>Step 1: Test Flask Server</h2>
+        <p>First, make sure your Flask server is running.</p>
+        <div class="code">
+            <pre>cd D:\react\chess_brilliance_ai\test
+python app.py</pre>
+        </div>
+        <button onclick="testFlaskServer()">Test Flask Connection</button>
+        <div id="flaskStatus" class="status pending">Not tested yet</div>
+    </div>
+
+    <div class="test-box">
+        <h2>Step 2: Start Engine</h2>
+        <p>This will call the /start_engine endpoint.</p>
+        <button onclick="startEngine()">Start Engine</button>
+        <div id="engineStartStatus" class="status pending">Not started</div>
+        <div id="engineStartDetails" class="code" style="display:none;"></div>
+    </div>
+
+    <div class="test-box">
+        <h2>Step 3: Test Evaluation</h2>
+        <p>This will test a single move evaluation (e2e4 in starting position).</p>
+        <button onclick="testEvaluation()" id="testEvalBtn" disabled>Test Evaluation</button>
+        <div id="evalStatus" class="status pending">Not tested</div>
+        <div id="evalDetails" class="code" style="display:none;"></div>
+    </div>
+
+    <div class="test-box">
+        <h2>Diagnostic Info</h2>
+        <div id="diagnosticInfo" class="code">
+            <pre id="diagPre">Click buttons above to run tests...</pre>
+        </div>
+    </div>
+
+    <script>
+        let engineRunning = false;
+
+        function log(message) {
+            const pre = document.getElementById('diagPre');
+            const timestamp = new Date().toLocaleTimeString();
+            pre.textContent += `\n[${timestamp}] ${message}`;
+            console.log(message);
+        }
+
+        async function testFlaskServer() {
+            const statusDiv = document.getElementById('flaskStatus');
+            statusDiv.className = 'status pending';
+            statusDiv.textContent = 'Testing connection to Flask server...';
+            log('Testing Flask server at http://localhost:5000');
+
+            try {
+                const response = await fetch('http://localhost:5000/start_engine', { 
+                    method: 'OPTIONS'  // CORS preflight
+                });
+                statusDiv.className = 'status success';
+                statusDiv.textContent = '✅ Flask server is responding!';
+                log('✅ Flask server is running');
+                return true;
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `❌ Cannot connect to Flask server: ${error.message}`;
+                log(`❌ Flask connection error: ${error.message}`);
+                alert('Flask server is not running!\n\nPlease run:\ncd D:\\react\\chess_brilliance_ai\\test\npython app.py');
+                return false;
+            }
+        }
+
+        async function startEngine() {
+            const statusDiv = document.getElementById('engineStartStatus');
+            const detailsDiv = document.getElementById('engineStartDetails');
+            
+            statusDiv.className = 'status pending';
+            statusDiv.textContent = 'Starting engine...';
+            log('Calling POST /start_engine');
+
+            try {
+                const response = await fetch('http://localhost:5000/start_engine', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                log(`Response status: ${response.status}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                log(`Response data: ${JSON.stringify(data)}`);
+
+                detailsDiv.style.display = 'block';
+                detailsDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+
+                if (data.status === 'started' || data.status === 'already_running') {
+                    engineRunning = true;
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `✅ Engine started successfully! (${data.status})`;
+                    log('✅ Engine is now running');
+                    document.getElementById('testEvalBtn').disabled = false;
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = `❌ Engine start failed: ${data.message}`;
+                    log(`❌ Engine start failed: ${data.message}`);
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `❌ Error: ${error.message}`;
+                log(`❌ Engine start error: ${error.message}`);
+                detailsDiv.style.display = 'block';
+                detailsDiv.innerHTML = `<pre>Error: ${error.stack}</pre>`;
+            }
+        }
+
+        async function testEvaluation() {
+            const statusDiv = document.getElementById('evalStatus');
+            const detailsDiv = document.getElementById('evalDetails');
+            
+            statusDiv.className = 'status pending';
+            statusDiv.textContent = 'Evaluating test position...';
+            log('Calling POST /evaluate with test position');
+
+            const testData = {
+                fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1',
+                move: 'e7e5',
+                depth: 18,
+                multipv: 5
+            };
+
+            log(`Request: ${JSON.stringify(testData)}`);
+
+            try {
+                const response = await fetch('http://localhost:5000/evaluate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testData)
+                });
+
+                log(`Response status: ${response.status}`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                log(`Response received: ${Object.keys(data).join(', ')}`);
+
+                detailsDiv.style.display = 'block';
+                detailsDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+
+                if (data.eval_before != null && data.eval_after != null) {
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `✅ Evaluation successful! Eval: ${data.eval_before} → ${data.eval_after}, Label: ${data.label}`;
+                    log('✅ Evaluation working perfectly!');
+                } else if (data.error) {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = `❌ Evaluation error: ${data.error}`;
+                    log(`❌ Evaluation error: ${data.error}`);
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = '❌ Unexpected response format';
+                    log('❌ Unexpected response format');
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `❌ Error: ${error.message}`;
+                log(`❌ Evaluation error: ${error.message}`);
+                detailsDiv.style.display = 'block';
+                detailsDiv.innerHTML = `<pre>Error: ${error.stack}</pre>`;
+            }
+        }
+
+        // Initialize
+        log('Diagnostic tool loaded');
+        log('Backend URL: http://localhost:5000');
+        log('Ready to test!');
+    </script>
+</body>
+</html>
+

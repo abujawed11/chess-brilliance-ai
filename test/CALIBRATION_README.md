@@ -4,6 +4,29 @@
 
 This calibration tool helps validate chess move grading against Chess.com labels by analyzing moves with Stockfish and logging feature data for model training.
 
+## 🚀 Quick Start (Auto-Analysis)
+
+**Analyze an entire PGN automatically in 3 steps:**
+
+1. **Start the Flask server**: 
+   ```bash
+   cd test
+   python app.py
+   ```
+
+2. **Open the tool**: Navigate to `http://localhost:5000` and open `callibrator.html`
+
+3. **Run Auto-Analysis**:
+   - Click **"Start Analysis Engine"** (green button)
+   - Upload your PGN file or paste PGN text
+   - Click **"Load PGN"**
+   - Click **"🚀 Start Auto-Analysis"** (blue button)
+   - Wait for completion (progress shown in real-time)
+   - Edit labels in the table if needed
+   - Click **"Download JSON"** to save results
+
+**That's it!** All moves are analyzed and logged automatically. ✨
+
 ## Recommended Settings
 
 ### Engine Configuration
@@ -52,9 +75,27 @@ The system ensures:
 
 ## Usage Workflow
 
-### Two Modes of Operation
+### Three Modes of Operation
 
-#### **Mode 1: PGN Navigation (Replay Games)**
+#### **Mode 1: PGN Auto-Analysis (Recommended - Fully Automated)**
+
+1. **Start Engine**: Click "Start Analysis Engine" (green button)
+2. **Load PGN**: Upload file or paste PGN text
+3. **Auto-Analyze**: Click "🚀 Start Auto-Analysis" (blue button)
+   - System automatically plays through ALL moves
+   - Engine analyzes each move with MultiPV settings
+   - All moves are logged automatically with engine labels
+   - Progress is shown in real-time
+   - Can be stopped mid-analysis by clicking the button again
+4. **Review & Edit Labels**: After completion, review the logged samples table
+   - Click any label cell to change it (e.g., from "Best" to "Brilliant")
+   - Labels can be updated based on Chess.com analysis
+5. **Export**: Click "Download JSON" to save calibration dataset
+6. **Stop Engine**: Click "Stop Analysis Engine" when done
+
+**Performance**: At depth 22, MultiPV 5, expect ~1-2s per move. A 40-move game takes 1-2 minutes.
+
+#### **Mode 2: PGN Manual Navigation (Replay Games Step-by-Step)**
 
 1. **Start Engine**: Click "Start Analysis Engine" (green button)
 2. **Load PGN**: Upload file or paste PGN text
@@ -66,7 +107,7 @@ The system ensures:
 5. **Export**: Click "Download JSON" to save calibration dataset
 6. **Stop Engine**: Click "Stop Analysis Engine" (red button) when done
 
-#### **Mode 2: FEN Manual Play (Analyze Specific Positions)**
+#### **Mode 3: FEN Manual Play (Analyze Specific Positions)**
 
 1. **Start Engine**: Click "Start Analysis Engine" (green button)
 2. **Load FEN**: Paste a FEN string (e.g., `rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1`)
@@ -126,7 +167,19 @@ This helps identify brilliant sacrificial moves (Brilliant moves often combine s
 
 ## Troubleshooting
 
-### Slow Analysis
+### Auto-Analysis Not Starting
+- Make sure you've loaded a PGN first (click "Load PGN")
+- Ensure the persistent engine is running (green button should show "Stop Analysis Engine")
+- Check that the Flask server is running on port 5000
+- If it gets stuck, refresh the page and try again
+
+### Auto-Analysis Too Slow
+- Reduce depth from 22 to 18 (Settings: Depth field)
+- Reduce MultiPV from 5 to 3 (Settings: MultiPV field)
+- At depth 18, MultiPV 3: expect ~0.5s per move (75 moves/min)
+- At depth 22, MultiPV 5: expect ~1.5s per move (40 moves/min)
+
+### Slow Analysis (General)
 - Ensure persistent engine is started (green button shows "Stop Analysis Engine")
 - Reduce depth to 18 or MultiPV to 3
 - Check CPU usage (should be near 100% per thread)
@@ -192,14 +245,21 @@ rank, top_gap = played_rank_and_gap(uci_move, pvs, root_turn)
 
 ## Performance Benchmarks
 
-**With Persistent Engine (recommended):**
-- Depth 18, MultiPV 5: ~0.5-0.8s per move
-- Depth 22, MultiPV 5: ~1-2s per move
-- ~1800-3600 moves/hour at depth 18
+**Auto-Analysis Mode (with Persistent Engine - recommended):**
+- Depth 18, MultiPV 5: ~0.5-0.8s per move → **4500-7200 moves/hour**
+- Depth 22, MultiPV 5: ~1-2s per move → **1800-3600 moves/hour**
+- **Example**: 40-move game at depth 22 = ~60-80 seconds total
+- **Example**: 100-move game at depth 18 = ~50-80 seconds total
+- Can analyze multiple full games while you grab coffee! ☕
+
+**Manual Navigation (with Persistent Engine):**
+- Same engine speed as above, but requires manual clicking
+- Best for learning and spot-checking specific positions
 
 **Without Persistent Engine (not recommended):**
 - Depth 18, MultiPV 5: ~3-4s per move
 - Engine spawn overhead: ~2-3s per evaluation
 - ~900-1200 moves/hour
+- **4x slower than persistent engine**
 
-**Recommendation**: Always use persistent engine for calibration work.
+**Recommendation**: Always use persistent engine + auto-analysis for bulk calibration work.

@@ -353,6 +353,8 @@
                 <button id="toggleEngine" class="btn mt-2 w-full bg-green-700 hover:bg-green-800">Start Analysis
                     Engine</button>
                 <div id="engineStatus" class="text-xs opacity-70 mt-1 text-center">Engine: Stopped</div>
+                <button id="autoAnalyzeBtn" class="btn mt-2 w-full" style="background:#2563eb;font-weight:600;">🚀 Start Auto-Analysis</button>
+                <div id="autoAnalyzeProgress" class="text-xs opacity-70 mt-1 text-center"></div>
             </div>
 
             <div class="space-y-2">
@@ -632,16 +634,28 @@
 
             if (!engineRunning) {
                 btn.disabled = true; btn.textContent = 'Starting...';
+                console.log('Attempting to start engine at:', `${baseUrl}/start_engine`);
                 try {
                     const r = await fetch(`${baseUrl}/start_engine`, { method: 'POST' });
+                    console.log('Engine start response status:', r.status);
                     const data = await r.json();
+                    console.log('Engine start response data:', data);
                     if (data.status === 'started' || data.status === 'already_running') {
                         engineRunning = true; btn.textContent = 'Stop Analysis Engine';
                         btn.classList.remove('bg-green-700', 'hover:bg-green-800');
                         btn.classList.add('bg-red-700', 'hover:bg-red-800');
                         status.textContent = 'Engine: Running'; status.classList.add('text-green-400');
-                    } else { alert('Failed to start engine: ' + data.message); btn.textContent = 'Start Analysis Engine'; }
-                } catch (e) { alert('Error starting engine: ' + e.message); btn.textContent = 'Start Analysis Engine'; }
+                        console.log('✅ Engine started successfully! engineRunning =', engineRunning);
+                    } else { 
+                        console.error('❌ Engine start failed:', data.message);
+                        alert('Failed to start engine: ' + data.message + '\n\nMake sure Flask server is running (python app.py)'); 
+                        btn.textContent = 'Start Analysis Engine'; 
+                    }
+                } catch (e) { 
+                    console.error('❌ Engine start error:', e);
+                    alert('Error starting engine: ' + e.message + '\n\nIs Flask server running?\nRun: python app.py'); 
+                    btn.textContent = 'Start Analysis Engine'; 
+                }
                 btn.disabled = false;
             } else {
                 btn.disabled = true; btn.textContent = 'Stopping...';
@@ -808,6 +822,143 @@
             document.getElementById('currentUci').textContent = uci;
             highlightSquare(from, '#FFD700'); highlightSquare(to, '#FFD700');
         }
+
+        // --- Auto-Analysis Feature ---
+        let isAutoAnalyzing = false;
+
+        async function autoAnalyzeAllMoves() {
+            console.log('🚀 Auto-analyze clicked. Engine status check:', { 
+                engineRunning, 
+                movesLoaded: fullMoveList.length,
+                isAutoAnalyzing 
+            });
+
+            if (fullMoveList.length === 0) {
+                alert('Please load a PGN first!');
+                return;
+            }
+
+            if (!engineRunning) {
+                console.error('❌ Engine not running! Cannot start auto-analysis.');
+                alert('Please start the analysis engine first!\n\nSteps:\n1. Click the GREEN "Start Analysis Engine" button\n2. Wait for it to turn RED and say "Stop Analysis Engine"\n3. Then try auto-analysis again');
+                return;
+            }
+
+            if (isAutoAnalyzing) {
+                // Stop auto-analysis
+                isAutoAnalyzing = false;
+                document.getElementById('autoAnalyzeBtn').textContent = '🚀 Start Auto-Analysis';
+                document.getElementById('autoAnalyzeBtn').style.background = '#2563eb';
+                document.getElementById('autoAnalyzeProgress').textContent = 'Stopped';
+                return;
+            }
+
+            // Confirm before starting
+            const confirmMsg = `This will analyze all ${fullMoveList.length} moves and log them automatically. This may take several minutes. Continue?`;
+            if (!confirm(confirmMsg)) return;
+
+            isAutoAnalyzing = true;
+            const btn = document.getElementById('autoAnalyzeBtn');
+            const progressDiv = document.getElementById('autoAnalyzeProgress');
+            
+            btn.textContent = '⏸️ Stop Auto-Analysis';
+            btn.style.background = '#dc2626';
+
+            // Reset to start
+            chess = new Chess(initialFen || undefined);
+            moveIndex = 0;
+            renderBoard();
+
+            let successCount = 0;
+            let errorCount = 0;
+            const startTime = Date.now();
+
+            for (let i = 0; i < fullMoveList.length; i++) {
+                if (!isAutoAnalyzing) {
+                    progressDiv.textContent = `Stopped at move ${i}/${fullMoveList.length}`;
+                    break;
+                }
+
+                const mv = fullMoveList[i];
+                const fenBefore = chess.fen();
+                const uci = uciFromVerbose(mv);
+
+                // Update progress
+                progressDiv.textContent = `Analyzing move ${i + 1}/${fullMoveList.length}... (${successCount} logged, ${errorCount} errors)`;
+
+                try {
+                    // Call engine evaluation
+                    const data = await callEvaluate(fenBefore, uci);
+                    
+                    if (data && data.eval_before != null) {
+                        // Auto-log the move with default label "Best" (user can change later)
+                        const eb = Number(data.eval_before);
+                        const ea = Number(data.eval_after);
+                        const cplVal = (data.cpl != null) ? Number(data.cpl) : Math.max(0, eb - ea);
+                        const rank = data.multipv_rank;
+                        const gap = data.top_gap;
+                        const isSac = !!data.is_sacrifice;
+                        const isMateB = data.eval_before_struct?.type === 'mate';
+                        const isMateA = data.eval_after_struct?.type === 'mate';
+                        const phaseBefore = phaseFromMaterial(new Chess(fenBefore));
+
+                        const sample = {
+                            fen: fenBefore,
+                            move: uci,
+                            chesscom_label: data.label || 'Best',  // Use engine's label or default to 'Best'
+                            eval_before_cp: eb,
+                            eval_after_cp: ea,
+                            cpl: cplVal,
+                            top_gap: gap,
+                            multipv_rank: rank,
+                            is_sacrifice: isSac,
+                            is_mate_before: isMateB,
+                            is_mate_after: isMateA,
+                            phase: phaseBefore,
+                            best_mate_in: data.best_mate_in ?? null,
+                            played_mate_in: data.played_mate_in ?? null,
+                            miss_mate: !!data.miss_mate,
+                            mate_miss_severity: data.mate_miss_severity ?? 0,
+                            mate_flip: !!data.mate_flip,
+                        };
+
+                        samples.push(sample);
+                        appendRow(sample);
+                        saveSamplesToStorage();
+                        successCount++;
+
+                        // Update board visualization
+                        chess.move(mv);
+                        moveIndex++;
+                        renderBoard();
+                        setLivePanel(data);
+                    } else {
+                        errorCount++;
+                        console.error('Invalid response for move:', uci, data);
+                    }
+                } catch (error) {
+                    errorCount++;
+                    console.error('Error analyzing move:', uci, error);
+                }
+
+                // Small delay to prevent overwhelming the server
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+
+            // Finished
+            isAutoAnalyzing = false;
+            btn.textContent = '🚀 Start Auto-Analysis';
+            btn.style.background = '#2563eb';
+
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            const avgTime = (elapsed / fullMoveList.length).toFixed(2);
+            progressDiv.textContent = `✅ Complete! ${successCount} moves logged in ${elapsed}s (avg ${avgTime}s/move). ${errorCount} errors.`;
+            progressDiv.style.color = '#4ade80';
+
+            alert(`Auto-analysis complete!\n\n${successCount} moves logged successfully\n${errorCount} errors\nTotal time: ${elapsed}s\n\nYou can now edit labels in the table below.`);
+        }
+
+        document.getElementById('autoAnalyzeBtn').addEventListener('click', autoAnalyzeAllMoves);
 
         board = Chessboard('board', { position: 'start', pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png' });
         renderBoard(); attachBoardClickHandlers(); loadSamplesFromStorage();
