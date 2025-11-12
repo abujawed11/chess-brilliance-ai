@@ -479,13 +479,38 @@
         const LABELS = ["Brilliant", "Great", "Best", "Excellent", "Good", "Book", "Inaccuracy", "Mistake", "Miss", "Blunder"];
 
         function uciFromVerbose(mv) { let u = mv.from + mv.to; if (mv.promotion) u += mv.promotion; return u; }
-        function phaseFromMaterial(ch) {
+        function phaseFromMaterial(ch, moveNumber = null) {
+            // Primary: Use move number if available
+            if (moveNumber !== null) {
+                // Opening: First 10 moves
+                if (moveNumber <= 10) return 'opening';
+                
+                // Then check material for middlegame vs endgame
+                const pieces = ch.board().flat().filter(Boolean);
+                let minors = 0, majors = 0;
+                for (const p of pieces) { 
+                    if (p.type === 'n' || p.type === 'b') minors++; 
+                    else if (p.type === 'r' || p.type === 'q') majors++; 
+                }
+                
+                // Endgame: very few pieces left (1 or fewer majors, 2 or fewer minors)
+                if (majors <= 1 && minors <= 2) return 'endgame';
+                
+                // Otherwise: Middlegame
+                return 'middlegame';
+            }
+            
+            // Fallback: Material-only detection (when move number unknown)
             const pieces = ch.board().flat().filter(Boolean);
             let minors = 0, majors = 0;
-            for (const p of pieces) { if (p.type === 'n' || p.type === 'b') minors++; else if (p.type === 'r' || p.type === 'q') majors++; }
+            for (const p of pieces) { 
+                if (p.type === 'n' || p.type === 'b') minors++; 
+                else if (p.type === 'r' || p.type === 'q') majors++; 
+            }
+            
             if (majors <= 1 && minors <= 2) return 'endgame';
-            if (majors >= 3) return 'middlegame';
-            return 'opening';
+            if (majors >= 4 || minors >= 6) return 'opening';
+            return 'middlegame';
         }
         function download(filename, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = filename; a.click(); URL.revokeObjectURL(a.href); }
 
@@ -585,7 +610,7 @@
             mb.textContent = isMateB ? 'Yes' : 'No';
             ma.textContent = isMateA ? 'Yes' : 'No';
 
-            ph.textContent = phaseFromMaterial(chess);
+            ph.textContent = phaseFromMaterial(chess, moveIndex);
 
             // NEW: show mate meta
             if (bestMIEl) bestMIEl.textContent = (data.best_mate_in ?? '—');
@@ -684,10 +709,23 @@
             const tmp = new Chess(); const ok = tmp.load_pgn(text, { sloppy: true });
             if (!ok) { alert('Failed to parse PGN.'); return; }
             fullMoveList = tmp.history({ verbose: true });
-            chess = new Chess(); initialFen = null; moveIndex = 0;
+            
+            // If a FEN was previously loaded, keep it as the starting position
+            // Otherwise, start from the standard starting position
+            const startFen = initialFen || tmp.fen();
+            chess = new Chess(startFen);
+            
+            // If we have a custom starting FEN, we need to set up the position
+            if (initialFen) {
+                console.log('Using custom starting FEN:', initialFen);
+            } else {
+                initialFen = null;
+            }
+            
+            moveIndex = 0;
             renderBoard(); setLivePanel(null); lastEvaluatedData = null;
             selectedSquare = null; legalMovesFromSquare = []; removeHighlights();
-            alert(`PGN loaded. ${fullMoveList.length} moves found.`);
+            alert(`PGN loaded. ${fullMoveList.length} moves found.${initialFen ? '\nStarting from custom FEN position.' : ''}`);
         });
 
         document.getElementById('loadFEN').addEventListener('click', () => {
@@ -744,7 +782,7 @@
             const moveUci = document.getElementById('currentUci').textContent;
             if (moveUci === '-') { alert('No move to log.'); return; }
 
-            const phaseBefore = phaseFromMaterial(new Chess(fenBefore));
+            const phaseBefore = phaseFromMaterial(new Chess(fenBefore), moveIndex);
 
             const sample = {
                 fen: fenBefore, move: moveUci, chesscom_label: sel.value,
@@ -830,11 +868,12 @@
             console.log('🚀 Auto-analyze clicked. Engine status check:', { 
                 engineRunning, 
                 movesLoaded: fullMoveList.length,
-                isAutoAnalyzing 
+                isAutoAnalyzing,
+                initialFen
             });
 
             if (fullMoveList.length === 0) {
-                alert('Please load a PGN first!');
+                alert('Please load a PGN first!\n\nWorkflow:\n1. (Optional) Load a FEN to set starting position\n2. Load a PGN file with the moves to analyze\n3. Click "Start Auto-Analysis"\n\nNote: FEN mode is for manual play only. Auto-analysis requires a PGN with moves.');
                 return;
             }
 
@@ -900,7 +939,7 @@
                         const isSac = !!data.is_sacrifice;
                         const isMateB = data.eval_before_struct?.type === 'mate';
                         const isMateA = data.eval_after_struct?.type === 'mate';
-                        const phaseBefore = phaseFromMaterial(new Chess(fenBefore));
+                        const phaseBefore = phaseFromMaterial(new Chess(fenBefore), i + 1);
 
                         const sample = {
                             fen: fenBefore,

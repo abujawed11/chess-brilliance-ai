@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(python -m test.validate_brilliance:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash($env:STOCKFISH_PATH=\"D:\\react\\chess_brilliance_ai\\engine\\stockfish.exe\")",
+      "Bash(python testself_test_eval.py:*)",
+      "Bash(python test/self_test_eval.py:*)"
     ],
     "deny": [],
     "ask": []
