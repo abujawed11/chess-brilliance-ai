@@ -84,6 +84,9 @@ def is_real_sacrifice(
 ) -> bool:
     """
     Sacrifice detection using SEE + material debit.
+
+    NOTE: In forced mate sequences, we don't count "undefended" pieces as sacrifices
+    because the opponent doesn't have time to capture them.
     """
     board = board_before.copy()
     mover = board.turn
@@ -107,20 +110,43 @@ def is_real_sacrifice(
     net_loss_cp = moved_cp - captured_cp
     opp_can_capture_back = board.is_attacked_by(not mover, to_sq)
 
+    # --- Special case: Forced mate sequences ---
+    # If both before and after are mate scores and we're improving or maintaining mate,
+    # this is NOT a sacrifice - it's a forced sequence where opponent has no time to capture.
+    mate_before = (eval_types and eval_types.get("before") == "mate")
+    mate_after  = (eval_types and eval_types.get("after")  == "mate")
+
+    MATE_THRESHOLD = 20000  # Approximate threshold for mate scores (adjust based on your MATE_CP)
+
+    is_forced_mate_sequence = False
+    if eval_before is not None and eval_after is not None:
+        # Check if both evals are in mate territory (very high absolute values)
+        if abs(eval_before) >= MATE_THRESHOLD and abs(eval_after) >= MATE_THRESHOLD:
+            # Check if we're maintaining or improving our mate (same sign, similar or better eval)
+            same_side_advantage = (eval_before * eval_after > 0)  # same sign
+            if same_side_advantage:
+                is_forced_mate_sequence = True
+
+    if is_forced_mate_sequence:
+        print(f"[SAC DEBUG] Forced mate sequence detected - NOT counting as sacrifice")
+        print(f"  eval_before: {eval_before}, eval_after: {eval_after}")
+        return False
+
     # Gate A: debit + opponent can accept + SEE < 0
     if net_loss_cp >= MIN_SAC_CP and opp_can_capture_back and see_net_for_mover < 0:
+        print(f"[SAC DEBUG] Gate A triggered: net_loss={net_loss_cp}, SEE={see_net_for_mover}")
         return True
 
     # Gate B: destination square is simply losing via SEE
     if see_net_for_mover < 0:
+        print(f"[SAC DEBUG] Gate B triggered: SEE={see_net_for_mover} (losing exchange)")
         return True
 
     # Gate C: forcing sac (check/mate) with acceptability
-    mate_before = (eval_types and eval_types.get("before") == "mate")
-    mate_after  = (eval_types and eval_types.get("after")  == "mate")
     if (gives_check or mate_after or mate_before) and (
         see_net_for_mover < 0 or (opp_can_capture_back and net_loss_cp >= MIN_SAC_CP)
     ):
+        print(f"[SAC DEBUG] Gate C triggered: forcing move with material commitment")
         return True
 
     return False
@@ -468,26 +494,141 @@ def detect_miss(
 # BOOK MOVE DETECTION
 # ---------------------------------------------------------------------------
 
+# @dataclass
+# class BookParams:
+#     """
+#     Tunables for detecting "Book" moves (theoretical opening moves).
+
+#     This is a *heuristic* layer which can optionally be combined with a real
+#     opening database in the future.
+#     """
+#     # Opening phase cutoff: if fullmove_number > this, we don't call it Book
+#     max_opening_fullmove: int = 12
+
+#     # Opening positions should be near-equal
+#     max_abs_eval_opening: int = 80         # |eval| must be <= this (≈0.8 pawns)
+#     max_eval_change_opening: int = 60      # |eval_before - eval_after| <= this
+
+#     # Move must be close to engine best
+#     max_cpl_book: int = 35                 # CPL vs best must be small (≈0.35 pawn)
+
+#     # We only treat the top few engine candidates as "theoretical"
+#     max_multipv_rank: int = 3              # if multipv_rank > this → not Book
+
+
+# def detect_book_move(
+#     *,
+#     fullmove_number: int,
+#     eval_before_white: float,
+#     eval_after_white: float,
+#     cpl: Optional[float],
+#     multipv_rank: Optional[int],
+#     in_opening_db: Optional[bool] = None,
+#     params: Optional[BookParams] = None,
+# ) -> bool:
+#     """
+#     Decide whether a move should be labeled as 'Book'.
+
+#     Arguments:
+#         fullmove_number: 1-based fullmove number from the FEN
+#                          (chess.Board(...).fullmove_number)
+#         eval_before_white: eval BEFORE the move, White POV (cp)
+#         eval_after_white:  eval AFTER the move, White POV (cp)
+#         cpl: centipawn loss vs engine best from PRE (White POV)
+#         multipv_rank: engine rank of the played move (1..K), or None if unknown
+#         in_opening_db: if you have a real/small opening DB, pass True/False here.
+#                        If True, this function returns True immediately.
+
+#     Returns:
+#         True  -> treat this move as 'Book'
+#         False -> not Book
+#     """
+#     if params is None:
+#         params = BookParams()
+
+#     # If a real opening DB says "yes", trust it.
+#     if in_opening_db is True:
+#         return True
+
+#     # Clearly out of the opening by move number
+#     if fullmove_number > params.max_opening_fullmove:
+#         return False
+
+#     # Need CPL to know how far from best we are.
+#     if cpl is None:
+#         return False
+
+#     # Move must be close to engine best
+#     if cpl > params.max_cpl_book:
+#         return False
+
+#     # Opening positions should be roughly equal and stable
+#     if abs(eval_before_white) > params.max_abs_eval_opening:
+#         return False
+#     if abs(eval_after_white) > params.max_abs_eval_opening:
+#         return False
+#     if abs(eval_before_white - eval_after_white) > params.max_eval_change_opening:
+#         return False
+
+#     # If we know multipv rank, restrict to top few candidates
+#     if multipv_rank is not None and multipv_rank > params.max_multipv_rank:
+#         return False
+
+#     # Heuristically, this looks like a theoretical opening move.
+#     return True
+
+
+# def detect_book_move(
+#     *,
+#     fullmove_number: int,
+#     eval_before_white: float,
+#     eval_after_white: float,
+#     cpl: Optional[float],
+#     multipv_rank: Optional[int],
+#     in_opening_db: Optional[bool] = None,
+#     is_standard_start: bool = True,          # <-- add this param if you can
+#     params: Optional[BookParams] = None,
+# ) -> bool:
+#     if params is None:
+#         params = BookParams()
+
+#     # 1) If a real opening DB says "yes", trust it.
+#     if in_opening_db is True:
+#         return True
+
+#     # 2) If the game did NOT start from initial position,
+#     #    do NOT use any heuristic Book logic.
+#     if not is_standard_start:
+#         return False
+
+#     # 3) Heuristic Book only for early moves from start position
+#     if fullmove_number > params.max_opening_fullmove:
+#         return False
+
+#     if cpl is None:
+#         return False
+#     if cpl > params.max_cpl_book:
+#         return False
+#     if abs(eval_before_white) > params.max_abs_eval_opening:
+#         return False
+#     if abs(eval_after_white) > params.max_abs_eval_opening:
+#         return False
+#     if abs(eval_before_white - eval_after_white) > params.max_eval_change_opening:
+#         return False
+#     if multipv_rank is not None and multipv_rank > params.max_multipv_rank:
+#         return False
+
+#     return True
+
+
 @dataclass
 class BookParams:
     """
-    Tunables for detecting "Book" moves (theoretical opening moves).
-
-    This is a *heuristic* layer which can optionally be combined with a real
-    opening database in the future.
+    Book parameters placeholder.
+    We now rely ONLY on a real opening database (Polyglot),
+    so no heuristic thresholds are used here anymore.
     """
-    # Opening phase cutoff: if fullmove_number > this, we don't call it Book
-    max_opening_fullmove: int = 20
-
-    # Opening positions should be near-equal
-    max_abs_eval_opening: int = 80         # |eval| must be <= this (≈0.8 pawns)
-    max_eval_change_opening: int = 60      # |eval_before - eval_after| <= this
-
-    # Move must be close to engine best
-    max_cpl_book: int = 35                 # CPL vs best must be small (≈0.35 pawn)
-
-    # We only treat the top few engine candidates as "theoretical"
-    max_multipv_rank: int = 3              # if multipv_rank > this → not Book
+    pass
 
 
 def detect_book_move(
@@ -501,55 +642,19 @@ def detect_book_move(
     params: Optional[BookParams] = None,
 ) -> bool:
     """
-    Decide whether a move should be labeled as 'Book'.
+    Decide whether a move should be labeled 'Book'.
 
-    Arguments:
-        fullmove_number: 1-based fullmove number from the FEN
-                         (chess.Board(...).fullmove_number)
-        eval_before_white: eval BEFORE the move, White POV (cp)
-        eval_after_white:  eval AFTER the move, White POV (cp)
-        cpl: centipawn loss vs engine best from PRE (White POV)
-        multipv_rank: engine rank of the played move (1..K), or None if unknown
-        in_opening_db: if you have a real/small opening DB, pass True/False here.
-                       If True, this function returns True immediately.
+    NEW SIMPLE RULE:
+    - Only return True if the move is found in the real opening DB
+      (Polyglot `book.bin` via opening_book.is_book_move).
+    - Ignore all heuristic logic based on eval, CPL, move number, etc.
 
-    Returns:
-        True  -> treat this move as 'Book'
-        False -> not Book
+    This guarantees:
+    - No 'Book' labels in random middle-game/end-game FENs.
+    - No 'Book' labels if the book file is missing.
     """
-    if params is None:
-        params = BookParams()
-
-    # If a real opening DB says "yes", trust it.
-    if in_opening_db is True:
-        return True
-
-    # Clearly out of the opening by move number
-    if fullmove_number > params.max_opening_fullmove:
-        return False
-
-    # Need CPL to know how far from best we are.
-    if cpl is None:
-        return False
-
-    # Move must be close to engine best
-    if cpl > params.max_cpl_book:
-        return False
-
-    # Opening positions should be roughly equal and stable
-    if abs(eval_before_white) > params.max_abs_eval_opening:
-        return False
-    if abs(eval_after_white) > params.max_abs_eval_opening:
-        return False
-    if abs(eval_before_white - eval_after_white) > params.max_eval_change_opening:
-        return False
-
-    # If we know multipv rank, restrict to top few candidates
-    if multipv_rank is not None and multipv_rank > params.max_multipv_rank:
-        return False
-
-    # Heuristically, this looks like a theoretical opening move.
-    return True
+    # Only trust the real DB signal
+    return bool(in_opening_db)
 
 
 

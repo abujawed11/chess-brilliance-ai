@@ -1,127 +1,214 @@
+# # opening_book.py
+
+# import chess
+
+# # ---------------------------------------------------------------------------
+# # Define a small set of popular openings as SAN move sequences.
+# # You can extend this list anytime.
+# # Each entry is: (name, "moves in SAN...")
+# # ---------------------------------------------------------------------------
+
+# OPENING_LINES = [
+#     # 1.e4 e5 openings
+#     ("Ruy Lopez (Morphy Defense)",
+#      "e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7"),
+
+#     ("Italian Game (Giuoco Piano)",
+#      "e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3"),
+
+#     ("Scotch Game",
+#      "e4 e5 Nf3 Nc6 d4 exd4 Nxd4"),
+
+#     ("Four Knights Game",
+#      "e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5"),
+
+#     # 1.e4 c5 Sicilian
+#     ("Sicilian Defense (Open Sicilian)",
+#      "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6"),
+
+#     ("Sicilian Najdorf idea",
+#      "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5"),
+
+#     # 1.e4 e6 French
+#     ("French Defense (Advance)",
+#      "e4 e6 d4 d5 e5 c5 c3 Nc6 Nf3"),
+
+#     ("French Defense (Tarrasch)",
+#      "e4 e6 d4 d5 Nd2 c5 exd5 exd5 Ngf3"),
+
+#     # 1.e4 c6 Caro-Kann
+#     ("Caro-Kann (Advance)",
+#      "e4 c6 d4 d5 e5 Bf5 Nf3 e6 Be2"),
+
+#     ("Caro-Kann (Classical)",
+#      "e4 c6 d4 d5 Nc3 dxe5 Nxe4 Bf5 Ng3 Bg6"),
+
+#     # 1.d4 d5 Queen's Gambit
+#     ("Queen's Gambit Declined",
+#      "d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3"),
+
+#     ("Queen's Gambit Accepted",
+#      "d4 d5 c4 dxc4 Nf3 Nf6 e3 e6 Bxc4 c5"),
+
+#     # 1.d4 Nf6 Indian systems
+#     ("King's Indian Defense",
+#      "d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O"),
+
+#     ("Nimzo-Indian Defense",
+#      "d4 Nf6 c4 e6 Nc3 Bb4 e3 O-O Bd3 d5"),
+
+#     # 1.c4 English
+#     ("English Opening",
+#      "c4 e5 Nc3 Nf6 g3 d5 cxd5 Nxd5 Bg2 Nb6 Nf3"),
+
+#     # Slav / Semi-Slav
+#     ("Slav Defense",
+#      "d4 d5 c4 c6 Nf3 Nf6 Nc3 dxc4 a4 Bf5"),
+
+#     ("Semi-Slav",
+#      "d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 e3 Nbd7 Bd3 dxc4"),
+# ]
+
+
+# # ---------------------------------------------------------------------------
+# # Build a dict: (fen_before, move_uci) -> True
+# # ---------------------------------------------------------------------------
+
+# def build_opening_book():
+#     """
+#     Returns:
+#         dict[(fen_before, uci_move)] -> True
+#     """
+#     book = {}
+
+#     for name, san_line in OPENING_LINES:
+#         board = chess.Board()  # start from initial position
+#         moves = san_line.split()
+
+#         for san in moves:
+#             fen_before = board.fen()
+#             try:
+#                 move = board.parse_san(san)
+#             except ValueError:
+#                 # In case of a typo in SAN, skip the rest of this line
+#                 print(f"[OPENING_BOOK] Failed to parse SAN '{san}' in line '{name}'")
+#                 break
+
+#             uci_move = move.uci()
+#             # Store this as a book move from this position
+#             book[(fen_before, uci_move)] = True
+
+#             # Push the move and continue
+#             board.push(move)
+
+#     return book
+
+
+# # Build once at import time
+# BOOK_ENTRIES = build_opening_book()
+
+
+# def is_book_move(fen_before: str, move_uci: str) -> bool:
+#     """
+#     Check if (fen_before, move_uci) is in our small opening book.
+#     """
+#     return BOOK_ENTRIES.get((fen_before, move_uci), False)
+
+
+# def has_any_book_move(fen_before: str) -> bool:
+#     """
+#     Check if there is at least one book move from this position in our tiny DB.
+#     Useful if you ever want to show "book moves available" instead of
+#     just checking the user's move.
+#     """
+#     for (fen, uci), _ in BOOK_ENTRIES.items():
+#         if fen == fen_before:
+#             return True
+#     return False
+
+
+
 # opening_book.py
 
+import os
 import chess
+import chess.polyglot
 
-# ---------------------------------------------------------------------------
-# Define a small set of popular openings as SAN move sequences.
-# You can extend this list anytime.
-# Each entry is: (name, "moves in SAN...")
-# ---------------------------------------------------------------------------
+# Path to your polyglot book file
+# Go up one directory from test/ to reach project root, then into engine/
+BOOK_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "engine", "book.bin")
 
-OPENING_LINES = [
-    # 1.e4 e5 openings
-    ("Ruy Lopez (Morphy Defense)",
-     "e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7"),
-
-    ("Italian Game (Giuoco Piano)",
-     "e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3"),
-
-    ("Scotch Game",
-     "e4 e5 Nf3 Nc6 d4 exd4 Nxd4"),
-
-    ("Four Knights Game",
-     "e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5"),
-
-    # 1.e4 c5 Sicilian
-    ("Sicilian Defense (Open Sicilian)",
-     "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6"),
-
-    ("Sicilian Najdorf idea",
-     "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5"),
-
-    # 1.e4 e6 French
-    ("French Defense (Advance)",
-     "e4 e6 d4 d5 e5 c5 c3 Nc6 Nf3"),
-
-    ("French Defense (Tarrasch)",
-     "e4 e6 d4 d5 Nd2 c5 exd5 exd5 Ngf3"),
-
-    # 1.e4 c6 Caro-Kann
-    ("Caro-Kann (Advance)",
-     "e4 c6 d4 d5 e5 Bf5 Nf3 e6 Be2"),
-
-    ("Caro-Kann (Classical)",
-     "e4 c6 d4 d5 Nc3 dxe5 Nxe4 Bf5 Ng3 Bg6"),
-
-    # 1.d4 d5 Queen's Gambit
-    ("Queen's Gambit Declined",
-     "d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3"),
-
-    ("Queen's Gambit Accepted",
-     "d4 d5 c4 dxc4 Nf3 Nf6 e3 e6 Bxc4 c5"),
-
-    # 1.d4 Nf6 Indian systems
-    ("King's Indian Defense",
-     "d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O"),
-
-    ("Nimzo-Indian Defense",
-     "d4 Nf6 c4 e6 Nc3 Bb4 e3 O-O Bd3 d5"),
-
-    # 1.c4 English
-    ("English Opening",
-     "c4 e5 Nc3 Nf6 g3 d5 cxd5 Nxd5 Bg2 Nb6 Nf3"),
-
-    # Slav / Semi-Slav
-    ("Slav Defense",
-     "d4 d5 c4 c6 Nf3 Nf6 Nc3 dxc4 a4 Bf5"),
-
-    ("Semi-Slav",
-     "d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 e3 Nbd7 Bd3 dxc4"),
-]
+# Cache the book object (optional but recommended)
+_book = None
 
 
-# ---------------------------------------------------------------------------
-# Build a dict: (fen_before, move_uci) -> True
-# ---------------------------------------------------------------------------
-
-def build_opening_book():
+def get_book():
     """
-    Returns:
-        dict[(fen_before, uci_move)] -> True
+    Loads and caches the polyglot book.
+    Logs everything so you know if the real book is being used.
     """
-    book = {}
+    global _book
 
-    for name, san_line in OPENING_LINES:
-        board = chess.Board()  # start from initial position
-        moves = san_line.split()
+    print(f"[OPENING_BOOK] TRYING TO LOAD BOOK FROM: {BOOK_PATH}")
 
-        for san in moves:
-            fen_before = board.fen()
+    if _book is None:
+        if not os.path.exists(BOOK_PATH):
+            print(f"[OPENING_BOOK] ❌ Book file NOT FOUND at: {BOOK_PATH}")
+            _book = None
+        else:
             try:
-                move = board.parse_san(san)
-            except ValueError:
-                # In case of a typo in SAN, skip the rest of this line
-                print(f"[OPENING_BOOK] Failed to parse SAN '{san}' in line '{name}'")
-                break
+                print(f"[OPENING_BOOK] ✅ Loading polyglot book...")
+                _book = chess.polyglot.MemoryMappedReader(BOOK_PATH)
+                print(f"[OPENING_BOOK] ✅ Book loaded successfully!")
+            except Exception as e:
+                print(f"[OPENING_BOOK] ❌ Failed to load book: {e}")
+                _book = None
 
-            uci_move = move.uci()
-            # Store this as a book move from this position
-            book[(fen_before, uci_move)] = True
-
-            # Push the move and continue
-            board.push(move)
-
-    return book
+    return _book
 
 
-# Build once at import time
-BOOK_ENTRIES = build_opening_book()
-
-
-def is_book_move(fen_before: str, move_uci: str) -> bool:
+def is_book_move(fen: str, uci_move: str) -> bool:
     """
-    Check if (fen_before, move_uci) is in our small opening book.
-    """
-    return BOOK_ENTRIES.get((fen_before, move_uci), False)
+    Return True if this (FEN, move) pair appears in the Polyglot opening book.
 
+    - fen: full FEN string of the PRE-move position
+    - uci_move: move in UCI format, e.g. "e2e4"
+    """
 
-def has_any_book_move(fen_before: str) -> bool:
-    """
-    Check if there is at least one book move from this position in our tiny DB.
-    Useful if you ever want to show "book moves available" instead of
-    just checking the user's move.
-    """
-    for (fen, uci), _ in BOOK_ENTRIES.items():
-        if fen == fen_before:
-            return True
-    return False
+    book = get_book()
+    if book is None:
+        print("[OPENING_BOOK] ⚠️ Book not loaded; treating as NOT book move.")
+        return False
+
+    board = chess.Board(fen)
+    move = chess.Move.from_uci(uci_move)
+
+    print(f"\n[OPENING_BOOK] ------------------------------")
+    print(f"[OPENING_BOOK] Checking FEN:")
+    print(f"{fen}")
+    print(f"[OPENING_BOOK] Checking move: {uci_move}")
+    print(f"[OPENING_BOOK] ------------------------------")
+
+    try:
+        found_any_entry = False
+
+        for entry in book.find_all(board):
+            found_any_entry = True
+            entry_move = entry.move.uci()
+            print(f"[OPENING_BOOK] Found book move in DB: {entry_move}")
+
+            if entry.move == move:
+                print(f"[OPENING_BOOK] 🎉 MATCH! This move IS in the opening book.")
+                return True
+
+        if not found_any_entry:
+            print(f"[OPENING_BOOK] No book entries found for this position.")
+        else:
+            print(f"[OPENING_BOOK] ❌ No match for move {uci_move} in book entries.")
+
+        return False
+
+    except Exception as e:
+        print(f"[OPENING_BOOK] ❌ Error scanning book: {e}")
+        return False
+

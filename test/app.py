@@ -1007,10 +1007,25 @@ def evaluate_move():
 
         # --- Sacrifice detection ---
         uci_move_obj = chess.Move.from_uci(move)
-        is_sacrifice = is_real_sacrifice(board_before, uci_move_obj)
+
+        # Prepare eval_types dict for sacrifice detection
+        eval_types_dict = {
+            "before": pre_score.get("type") if pre_score else None,
+            "after": post_score.get("type") if post_score else None,
+        }
+
+        is_sacrifice = is_real_sacrifice(
+            board_before=board_before,
+            move=uci_move_obj,
+            eval_before=eval_before_cp,
+            eval_after=eval_after_cp,
+            eval_types=eval_types_dict
+        )
 
         print("SAC DEBUG:", {
             "is_sacrifice": is_sacrifice,
+            "eval_before": eval_before_cp,
+            "eval_after": eval_after_cp,
         })
 
 
@@ -1050,6 +1065,7 @@ def evaluate_move():
         )
 
         print("is_book: ", is_book)
+        print("in_opening_db:", in_opening_db)
 
         # --- Brilliant (!!) / Great (!) / mate-flip Blunder ---
         exclam_label, brill_info = classify_exclam_move(
@@ -1067,7 +1083,7 @@ def evaluate_move():
         )
 
         # --- Final label priority: Book > exclam (Brilliant/Great/mate-flip Blunder) > Miss > basic ---
-        if is_book:
+        if in_opening_db:
             label = "Book"
         elif exclam_label == "Blunder":
             label = "Blunder"   # mate-flip catastrophe
