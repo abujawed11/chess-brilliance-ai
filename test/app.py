@@ -35,6 +35,10 @@ from utils.chess_helpers import (
 )
 from teacher.label_rules import label_move
 
+
+from basic_move_labels import classify_basic_move, detect_miss
+
+
 app = Flask(__name__)
 CORS(app)
 
@@ -64,35 +68,96 @@ PIECE_VALUES = {
 
 
 # --- RAW White-centric mapping (no normalization) ---
-MATE_CP = 32000
+# MATE_CP = 32000
+# MATE_STEP = 1000  # drop per ply
+
+# def cp_white_raw(score: dict) -> int:
+#     """
+#     Map a Stockfish score dict to centipawns from White's POV ONLY.
+#     - cp: return value as-is
+#     - mate: + for White mates, - for Black mates
+#       cp = (MATE_CP - MATE_STEP * |plies|)
+#     """
+#     if not score:
+#         return 0
+#     t = score.get("type")
+#     v = score.get("value", 0)
+#     if t == "mate":
+#         try:
+#             n = max(0, int(abs(v)))  # plies to mate
+#         except Exception:
+#             n = 0
+#         # Handle edge cases: if v==0 (terminal), treat as full MATE_CP
+#         base = MATE_CP - MATE_STEP * n
+#         if base < 0:
+#             base = 0
+#         return base if v > 0 else -base
+#     # cp case
+#     try:
+#         return int(v)
+#     except Exception:
+#         return 0
+
+
+# --- Position-based eval from White's perspective ---
+MATE_CP   = 32000
 MATE_STEP = 1000  # drop per ply
 
-def cp_white_raw(score: dict) -> int:
+def eval_for_white(score: dict, side_to_move: str) -> int:
     """
-    Map a Stockfish score dict to centipawns from White's POV ONLY.
-    - cp: return value as-is
-    - mate: + for White mates, - for Black mates
-      cp = (MATE_CP - MATE_STEP * |plies|)
+    Convert a Stockfish score dict + side_to_move into a centipawn eval
+    from White's perspective ONLY.
+
+    +ve => good for White
+    -ve => good for Black
     """
     if not score:
         return 0
+
     t = score.get("type")
     v = score.get("value", 0)
+
+    # 1) Normal centipawn case
+    if t == "cp":
+        try:
+            v = int(v)
+        except Exception:
+            v = 0
+        # Stockfish: cp is from side-to-move POV
+        # If White to move: v = advantage for White
+        # If Black to move: v = advantage for Black => flip sign
+        return v if side_to_move == "w" else -v
+
+    # 2) Mate case
     if t == "mate":
         try:
-            n = max(0, int(abs(v)))  # plies to mate
+            v = int(v)
         except Exception:
-            n = 0
-        # Handle edge cases: if v==0 (terminal), treat as full MATE_CP
-        base = MATE_CP - MATE_STEP * n
-        if base < 0:
-            base = 0
-        return base if v > 0 else -base
-    # cp case
+            v = 0
+
+        # raw v is from side-to-move POV
+        # turn = 'w':
+        #   v > 0 -> White mates in v
+        #   v < 0 -> White gets mated in |v|
+        # turn = 'b':
+        #   v > 0 -> Black mates in v (White gets mated)
+        #   v < 0 -> Black gets mated in |v| (White mates)
+        sign_for_white = 1 if side_to_move == "w" else -1
+        white_mate_val = v * sign_for_white   # >0: White mates, <0: White gets mated
+
+        if white_mate_val == 0:
+            return 0
+
+        n = abs(white_mate_val)
+        base = max(0, MATE_CP - MATE_STEP * n)
+        return base if white_mate_val > 0 else -base
+
+    # Fallback
     try:
         return int(v)
     except Exception:
         return 0
+
 
 
 def piece_cp(board: chess.Board, sq: chess.Square) -> int:
@@ -186,17 +251,17 @@ def is_real_sacrifice(board_before: chess.Board, move: chess.Move,
 
     return False
 
-# ----------------------------
-# MultiPV helper
-# ----------------------------
-# def played_rank_and_gap(uci_move, pvs, root_turn):
-#     """
-#     Return (rank, top_gap_cp, played_eval_cp, best_eval_cp)
 
-#     - rank: 1..K if found, K+1 if not found
-#     - top_gap_cp: |best_eval - played_eval| (None if not found)
-#     - played_eval_cp: eval of played move from PRE position (None if not found)
-#     - best_eval_cp: eval of PV#1 from PRE position
+# ----------------------------
+# MultiPV helper  (RAW / White-centric)
+# ----------------------------
+# def played_rank_and_gap(uci_move, pvs, _root_turn_ignored):
+#     """
+#     Return (rank, top_gap_cp, played_eval_cp, best_eval_cp) using RAW White-centric CP.
+
+#     - best_eval_cp: RAW CP of PV#1 from PRE (cp_from_score)
+#     - played_eval_cp: RAW CP of the played move from PRE (cp_from_score)
+#     - top_gap_cp: |best_eval_cp - played_eval_cp|
 #     """
 #     if not pvs:
 #         return (1, None, None, None)
@@ -204,8 +269,10 @@ def is_real_sacrifice(board_before: chess.Board, move: chess.Move,
 #     uci_move_normalized = uci_move.lower().strip().replace('=', '')
 #     K = len(pvs)
 
-#     # Best eval (PV#1) normalized to root side
-#     best_eval_cp = to_root_cp(pvs[0]["score"], root_turn, root_turn)
+#     # RAW White-centric best eval
+#     # best_eval_cp = cp_from_score(pvs[0]["score"])
+#     # best_eval_cp = cp_from_score(pvs[0]["score"], side_to_move='w')
+#     best_eval_cp = cp_white_raw(pvs[0]["score"])
 
 #     for pv_entry in pvs:
 #         pv = pv_entry.get("pv", [])
@@ -229,9 +296,12 @@ def is_real_sacrifice(board_before: chess.Board, move: chess.Move,
 
 #         if is_match:
 #             rank = pv_entry["multipv"]
-#             played_eval_cp = to_root_cp(pv_entry["score"], root_turn, root_turn)
-#             top_gap = abs(best_eval_cp - played_eval_cp)
-#             logger.info(f"Move '{uci_move_normalized}' found at rank {rank}, gap={top_gap:.1f}cp")
+#             # played_eval_cp = cp_from_score(pv_entry["score"])       # RAW (White POV)
+#             # played_eval_cp = cp_from_score(pv_entry["score"], side_to_move='w')
+#             played_eval_cp = cp_white_raw(pv_entry["score"])
+
+#             top_gap = abs(best_eval_cp - played_eval_cp)            # RAW gap
+#             logger.info(f"Move '{uci_move_normalized}' found at rank {rank}, RAW gap={top_gap:.1f}cp")
 #             return (rank, top_gap, played_eval_cp, best_eval_cp)
 
 #     logger.warning(
@@ -242,14 +312,15 @@ def is_real_sacrifice(board_before: chess.Board, move: chess.Move,
 
 
 # ----------------------------
-# MultiPV helper  (RAW / White-centric)
+# MultiPV helper  (White POV)
 # ----------------------------
-def played_rank_and_gap(uci_move, pvs, _root_turn_ignored):
+def played_rank_and_gap(uci_move, pvs, side_to_move: str):
     """
-    Return (rank, top_gap_cp, played_eval_cp, best_eval_cp) using RAW White-centric CP.
+    Return (rank, top_gap_cp, played_eval_cp, best_eval_cp) using
+    White-perspective centipawns.
 
-    - best_eval_cp: RAW CP of PV#1 from PRE (cp_from_score)
-    - played_eval_cp: RAW CP of the played move from PRE (cp_from_score)
+    - best_eval_cp: eval_for_white(PV#1 score, side_to_move-before)
+    - played_eval_cp: eval_for_white(played move score, side_to_move-before)
     - top_gap_cp: |best_eval_cp - played_eval_cp|
     """
     if not pvs:
@@ -258,10 +329,8 @@ def played_rank_and_gap(uci_move, pvs, _root_turn_ignored):
     uci_move_normalized = uci_move.lower().strip().replace('=', '')
     K = len(pvs)
 
-    # RAW White-centric best eval
-    # best_eval_cp = cp_from_score(pvs[0]["score"])
-    # best_eval_cp = cp_from_score(pvs[0]["score"], side_to_move='w')
-    best_eval_cp = cp_white_raw(pvs[0]["score"])
+    # Best eval from PRE, White POV
+    best_eval_cp = eval_for_white(pvs[0]["score"], side_to_move)
 
     for pv_entry in pvs:
         pv = pv_entry.get("pv", [])
@@ -285,12 +354,9 @@ def played_rank_and_gap(uci_move, pvs, _root_turn_ignored):
 
         if is_match:
             rank = pv_entry["multipv"]
-            # played_eval_cp = cp_from_score(pv_entry["score"])       # RAW (White POV)
-            # played_eval_cp = cp_from_score(pv_entry["score"], side_to_move='w')
-            played_eval_cp = cp_white_raw(pv_entry["score"])
-
-            top_gap = abs(best_eval_cp - played_eval_cp)            # RAW gap
-            logger.info(f"Move '{uci_move_normalized}' found at rank {rank}, RAW gap={top_gap:.1f}cp")
+            played_eval_cp = eval_for_white(pv_entry["score"], side_to_move)
+            top_gap = abs(best_eval_cp - played_eval_cp)
+            logger.info(f"Move '{uci_move_normalized}' found at rank {rank}, gap={top_gap:.1f}cp")
             return (rank, top_gap, played_eval_cp, best_eval_cp)
 
     logger.warning(
@@ -298,6 +364,8 @@ def played_rank_and_gap(uci_move, pvs, _root_turn_ignored):
         f"Available first moves: {[pv.get('pv', [''])[0] if pv.get('pv') else '' for pv in pvs]}"
     )
     return (K + 1, None, None, best_eval_cp)
+
+
 
 
 # ----------------------------
@@ -396,26 +464,52 @@ def evaluate_move():
         board = chess.Board(fen)
         fen_before = fen
 
+        side_before = 'w' if board.turn == chess.WHITE else 'b'
+
         # --- PRE (RAW White-centric) with retries ---
         pre = analyze_or_fail(fen_before, depth, multipv, persistent_engine)
         pre_score = pre[0]["score"]
-        # eval_before_cp = cp_from_score(pre_score, side_to_move='w')
-        eval_before_cp = cp_white_raw(pre_score)
+        eval_before_cp = eval_for_white(pre_score, side_before)
+
+
+
+        
+        # pre = analyze_or_fail(fen_before, depth, multipv, persistent_engine)
+        # pre_score = pre[0]["score"]
+        # # eval_before_cp = cp_from_score(pre_score, side_to_move='w')
+        # eval_before_cp = cp_white_raw(pre_score)
 
         # rank/gap vs best (RAW)
+        # multipv_rank, top_gap, played_eval_from_pre, best_eval_from_pre = played_rank_and_gap(
+        #     move, pre, None  # root ignored in RAW path
+        # )
         multipv_rank, top_gap, played_eval_from_pre, best_eval_from_pre = played_rank_and_gap(
-            move, pre, None  # root ignored in RAW path
+        move, pre, side_before
         )
+
+       
 
         # --- POST (after the move) with retries ---
         board.push_uci(move)
         post_fen = board.fen()
         post = analyze_or_fail(post_fen, depth, 1, persistent_engine)
         post_score = post[0]["score"]
+
+        side_after = 'w' if board.turn == chess.WHITE else 'b'
+        eval_after_cp = eval_for_white(post_score, side_after)
+
         # eval_after_cp = cp_from_score(post_score, side_to_move='w')
-        eval_after_cp  = cp_white_raw(post_score)
+        # eval_after_cp  = cp_white_raw(post_score)
 
         print(f"RAW pre={pre_score} post={post_score}  raw_cp pre={eval_before_cp:+} post={eval_after_cp:+}")
+        print(f"best_eval_from_pre ={best_eval_from_pre} multipv_rank = {multipv_rank}  top_gap = {top_gap} played_eval_from_pre={played_eval_from_pre} ")
+
+        print( "NEW :"
+            f"RAW pre={pre_score} post={post_score}  "
+            f"white_eval pre={eval_before_cp:+} post={eval_after_cp:+}  "
+            f"side_before={side_before} side_after={side_after}"
+        )
+
 
         # --- deltas (RAW) ---
         eval_change = eval_after_cp - eval_before_cp
@@ -432,6 +526,31 @@ def evaluate_move():
             f"[RAW] Eval change {eval_before_cp:+.1f} → {eval_after_cp:+.1f} (Δ {eval_change:+.1f}); "
             f"rank={multipv_rank}, top_gap={top_gap if top_gap is not None else 'N/A'} cp, CPL={cpl}"
         )
+
+        basic_label = classify_basic_move(
+            eval_before_white=eval_before_cp,
+            eval_after_white=eval_after_cp,
+            cpl=cpl,
+            mover_color=side_before,      # 'w' or 'b'
+            multipv_rank=multipv_rank,
+        )
+
+        print("Basic label: ", basic_label)
+
+
+
+        # --- Miss detection (general tactical / conversion / save) ---
+        # We use best_eval_from_pre (White POV) as the eval of the engine's PV#1
+        # miss_detected = detect_miss(
+        #     eval_before_white=eval_before_cp,
+        #     eval_after_white=eval_after_cp,
+        #     eval_best_white=best_eval_from_pre,
+        #     mover_color=side_before,
+        #     best_mate_in_plies=None,       # we keep your old miss_mate logic separate for now
+        #     played_mate_in_plies=None,
+        # )
+                # General Miss detection (tactical / save / conversion)
+
 
         # --- sacrifice check (unchanged) ---
         original_board = chess.Board(fen_before)
@@ -463,23 +582,61 @@ def evaluate_move():
         if miss_mate:
             mate_miss_severity = float(top_gap or 0) + 200.0 * float((played_mate_in or 99) - best_mate_in)
 
+
+        is_miss = detect_miss(
+            eval_before_white=eval_before_cp,
+            eval_after_white=eval_after_cp,
+            eval_best_white=best_eval_from_pre,
+            mover_color=side_before,
+            best_mate_in_plies=best_mate_in,      # you already compute this later
+            played_mate_in_plies=played_mate_in,  # optional, not used yet
+        )
+
+        print("miss_detected", is_miss)
+
         # --- label ---
+        # is_book = False
+        # gap_for_label = top_gap if top_gap is not None else 0
+
+        # if mate_flip:
+        #     if eval_before_cp > 0 and eval_after_cp < 0:
+        #         label = "Blunder"
+        #     elif eval_before_cp < 0 and eval_after_cp > 0:
+        #         label = "Brilliant"
+        #     else:
+        #         label = label_move(fen_before, move, eval_before_cp, eval_after_cp,
+        #                            multipv_rank, is_sacrifice, is_book, gap_for_label)
+        # elif miss_mate:
+        #     label = "Miss"
+        # else:
+        #     label = label_move(fen_before, move, eval_before_cp, eval_after_cp,
+        #                        multipv_rank, is_sacrifice, is_book, gap_for_label)
         is_book = False
         gap_for_label = top_gap if top_gap is not None else 0
 
+        # --- Final label selection ---
+        # 1) Mate flip overrides everything (Brilliant / Blunder swing)
         if mate_flip:
             if eval_before_cp > 0 and eval_after_cp < 0:
-                label = "Blunder"
+                label = "Blunder"   # threw away a winning mate
             elif eval_before_cp < 0 and eval_after_cp > 0:
-                label = "Brilliant"
+                label = "Brilliant" # turned a lost mate into winning for your side
             else:
-                label = label_move(fen_before, move, eval_before_cp, eval_after_cp,
-                                   multipv_rank, is_sacrifice, is_book, gap_for_label)
-        elif miss_mate:
+                label = label_move(
+                    fen_before, move, eval_before_cp, eval_after_cp,
+                    multipv_rank, is_sacrifice, is_book, gap_for_label
+                )
+
+        # 2) General Miss detection (tactical / conversion / save) or your existing missed-mate
+        elif is_miss:
             label = "Miss"
+
+        # 3) Fallback to your existing label_rules logic
         else:
-            label = label_move(fen_before, move, eval_before_cp, eval_after_cp,
-                               multipv_rank, is_sacrifice, is_book, gap_for_label)
+            label = label_move(
+                fen_before, move, eval_before_cp, eval_after_cp,
+                multipv_rank, is_sacrifice, is_book, gap_for_label
+            )
 
         return jsonify({
             "fen_before": fen_before,
@@ -505,6 +662,8 @@ def evaluate_move():
             "mate_flip": mate_flip,
             "mate_flip_severity": mate_flip_severity,
 
+            "basic_label": basic_label,      # <-- NEW (optional)
+            "miss_detected": is_miss,  # <-- NEW (optional)
             "label": label
         })
 
@@ -516,332 +675,9 @@ def evaluate_move():
             "message": str(e)
         }), 500
 
-# @app.route('/evaluate', methods=['POST'])
-# def evaluate_move():
-#     def mate_ply(score_dict):
-#         if not score_dict:
-#             return None
-#         if score_dict.get("type") == "mate":
-#             try:
-#                 return abs(int(score_dict.get("value", 0)))
-#             except Exception:
-#                 return None
-#         return None
-
-#     MISS_STILL_WINNING_CP = 300
-#     MISS_TOLERANCE_PLIES  = 1
-#     MISS_MIN_GAP_CP       = 300
-
-#     global persistent_engine
-#     data = request.json
-#     fen = data.get("fen")
-#     move = data.get("move")
-#     depth = int(data.get("depth", 18))
-#     multipv = int(data.get("multipv", 5))
-
-#     logger.info(f"Evaluating move: {move} for FEN: {fen[:60]}...")
-
-#     try:
-#         board = chess.Board(fen)
-#         fen_before = fen
-
-#         # --- analyze PRE (RAW White POV) ---
-#         if persistent_engine is not None:
-#             pre = analyze_fen_multipv_persistent(fen, persistent_engine, depth=depth, multipv=multipv)
-#         else:
-#             pre = analyze_fen_multipv(fen, depth=depth, multipv=multipv)
-
-#         # Rank/gap vs best (RAW)
-#         multipv_rank, top_gap, played_eval_from_pre, best_eval_from_pre = played_rank_and_gap(
-#             move, pre, None  # root_turn ignored (RAW mode)
-#         )
-
-#         # Eval BEFORE (best line) in RAW CP (White POV)
-#         pre_score = pre[0]["score"]
-#         # eval_before_cp = cp_from_score(pre_score)
-#         eval_after_cp = cp_from_score(post_score, side_to_move='w')
-
-#         # --- analyze POST (after the move) ---
-#         board.push_uci(move)
-#         post_fen = board.fen()
-
-#         if persistent_engine is not None:
-#             post = analyze_fen_multipv_persistent(post_fen, persistent_engine, depth=depth, multipv=1)
-#         else:
-#             post = analyze_fen_multipv(post_fen, depth=depth, multipv=1)
-
-#         # Eval AFTER in RAW CP (White POV)
-#         post_score = post[0]["score"]
-#         eval_after_cp = cp_from_score(post_score)
-
-#         print(f"RAW pre={pre_score} post={post_score}  raw_cp pre={eval_before_cp:+} post={eval_after_cp:+}")
-
-#         # Delta in RAW (positive = better for White, negative = better for Black)
-#         eval_change = eval_after_cp - eval_before_cp
-
-#         # CPL = |best_pre_raw - played_pre_raw| ; fallback to POST raw if not in PV
-#         if played_eval_from_pre is None:
-#             played_eval_from_pre = eval_after_cp
-#         cpl = abs(best_eval_from_pre - played_eval_from_pre) if best_eval_from_pre is not None else None
-
-#         # If top_gap missing (move not in PV), set it to CPL for UI
-#         if top_gap is None:
-#             top_gap = cpl
-
-#         logger.info(
-#             f"[RAW] Eval change {eval_before_cp:+.1f} → {eval_after_cp:+.1f} (Δ {eval_change:+.1f}); "
-#             f"rank={multipv_rank}, top_gap={top_gap if top_gap is not None else 'N/A'} cp, CPL={cpl}"
-#         )
-
-#         # --- sacrifice check (unchanged logic; uses board features) ---
-#         original_board = chess.Board(fen)
-#         uci_move = chess.Move.from_uci(move)
-#         is_sacrifice = is_real_sacrifice(original_board, uci_move)
-
-#         # --- mate metadata (RAW) ---
-#         best_mate_in   = mate_ply(pre_score)   # mate-in-N BEFORE (best line)
-#         played_mate_in = mate_ply(post_score)  # mate-in-N AFTER (played line)
-
-#         pre_is_mate  = (pre_score.get("type")  == "mate")
-#         post_is_mate = (post_score.get("type") == "mate")
-
-#         # Mate ownership flip in RAW White POV:
-#         # sign(pre_raw) * sign(post_raw) < 0  → switched winner (White mates vs Black mates)
-#         mate_flip = bool(pre_is_mate and post_is_mate and (eval_before_cp * eval_after_cp < 0))
-#         mate_flip_severity = 0
-#         if mate_flip:
-#             mate_flip_severity = 6400 + 100 * ((best_mate_in or 0) + (played_mate_in or 0))
-
-#         # --- missed mate (RAW POV: "still winning for White") ---
-#         still_winning = (eval_after_cp is not None and eval_after_cp >= MISS_STILL_WINNING_CP)
-#         forgone = False
-#         if best_mate_in is not None:
-#             forgone = (played_mate_in is None) or (played_mate_in > best_mate_in + MISS_TOLERANCE_PLIES)
-
-#         big_gap = (top_gap is not None and (top_gap >= MISS_MIN_GAP_CP))
-#         miss_mate = bool(best_mate_in is not None and forgone and still_winning and big_gap)
-
-#         mate_miss_severity = 0.0
-#         if miss_mate:
-#             mate_miss_severity = float(top_gap or 0) + 200.0 * float((played_mate_in or 99) - best_mate_in)
-
-#         # --- labels (reuse your rule-set; pass RAW gap) ---
-#         is_book = False
-#         gap_for_label = top_gap if top_gap is not None else 0
-
-#         if mate_flip:
-#             # direction of flip in RAW White POV
-#             if eval_before_cp > 0 and eval_after_cp < 0:
-#                 label = "Blunder"    # White was mating → now Black is mating
-#             elif eval_before_cp < 0 and eval_after_cp > 0:
-#                 label = "Brilliant"  # Black was mating → now White is mating
-#             else:
-#                 label = label_move(fen, move, eval_before_cp, eval_after_cp, multipv_rank,
-#                                    is_sacrifice, is_book, gap_for_label)
-#         elif miss_mate:
-#             label = "Miss"
-#         else:
-#             label = label_move(fen, move, eval_before_cp, eval_after_cp, multipv_rank,
-#                                is_sacrifice, is_book, gap_for_label)
-
-#         return jsonify({
-#             "fen_before": fen_before,
-
-#             # These are now RAW White-centric CP (mates mapped via cp_from_score)
-#             "eval_before": eval_before_cp,
-#             "eval_after":  eval_after_cp,
-#             "eval_change": eval_change,
-
-#             "multipv_rank": multipv_rank,
-#             "top_gap": top_gap,   # RAW gap vs best (PRE)
-#             "cpl": cpl,           # RAW CPL
-
-#             "eval_before_struct": pre_score,   # original dicts for UI (cp/mate, value)
-#             "eval_after_struct":  post_score,
-
-#             "is_sacrifice": is_sacrifice,
-
-#             # mate-related
-#             "best_mate_in": best_mate_in,
-#             "played_mate_in": played_mate_in,
-#             "miss_mate": miss_mate,
-#             "mate_miss_severity": mate_miss_severity,
-#             "mate_flip": mate_flip,
-#             "mate_flip_severity": mate_flip_severity,
-
-#             "label": label
-#         })
-
     except Exception as e:
         logger.error(f"Error in /evaluate: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-
-
-# @app.route('/evaluate', methods=['POST'])
-# def evaluate_move():
-#     # --- helper for mate distance (plies) ---
-#     def mate_ply(score_dict):
-#         """Return mate-in-N (plies) as nonnegative int, or None if not mate."""
-#         if not score_dict:
-#             return None
-#         if score_dict.get("type") == "mate":
-#             try:
-#                 return abs(int(score_dict.get("value", 0)))
-#             except Exception:
-#                 return None
-#         return None
-
-#     # --- tunables for "Miss" ---
-#     MISS_STILL_WINNING_CP = 300   # after the move you're still clearly winning
-#     MISS_TOLERANCE_PLIES  = 1     # allow equal / +1 ply; larger = missed
-#     MISS_MIN_GAP_CP       = 300   # require a meaningful gap to best
-
-#     global persistent_engine
-#     data = request.json
-#     fen = data.get("fen")
-#     move = data.get("move")
-#     depth = int(data.get("depth", 18))
-#     multipv = int(data.get("multipv", 5))
-
-#     logger.info(f"Evaluating move: {move} for FEN: {fen[:60]}...")
-
-#     try:
-#         board = chess.Board(fen)
-#         root_turn = board.turn  # True if White to move
-#         fen_before = fen
-
-#         # --- analyze PRE position ---
-#         if persistent_engine is not None:
-#             pre = analyze_fen_multipv_persistent(fen, persistent_engine, depth=depth, multipv=multipv)
-#         else:
-#             pre = analyze_fen_multipv(fen, depth=depth, multipv=multipv)
-
-#         # rank/gap + evals from PRE
-#         multipv_rank, top_gap, played_eval_from_pre, best_eval_from_pre = played_rank_and_gap(
-#             move, pre, root_turn
-#         )
-
-#         # eval before (best line from PRE), normalized
-#         eval_before_cp = to_root_cp(pre[0]["score"], root_turn, root_turn)
-
-#         # --- analyze POST position (after the move) ---
-#         board.push_uci(move)
-#         post_fen = board.fen()
-#         node_turn_after = board.turn
-
-#         if persistent_engine is not None:
-#             post = analyze_fen_multipv_persistent(post_fen, persistent_engine, depth=depth, multipv=1)
-#         else:
-#             post = analyze_fen_multipv(post_fen, depth=depth, multipv=1)
-
-#         # eval after, normalized to root perspective (account for turn switch)
-#         eval_after_cp = to_root_cp(post[0]["score"], root_turn, node_turn_after)
-
-#         print(f"RAW pre={pre[0]['score']} post={post[0]['score']}  norm pre={eval_before_cp:+} post={eval_after_cp:+} root_turn={root_turn} node_after={node_turn_after}")
-
-
-#         # delta from root perspective
-#         eval_change = eval_after_cp - eval_before_cp
-
-#         # CPL = |best_eval(pre) - played_eval(pre)|  (fallback to eval_after if move not in PV)
-#         if played_eval_from_pre is None:
-#             played_eval_from_pre = eval_after_cp
-#         cpl = abs(best_eval_from_pre - played_eval_from_pre) if best_eval_from_pre is not None else None
-
-#         # if top_gap missing (move not in PV), use CPL so UI always has a value
-#         if top_gap is None:
-#             top_gap = cpl
-
-#         logger.info(
-#             f"Eval change {eval_before_cp:+.1f} → {eval_after_cp:+.1f} (Δ {eval_change:+.1f}); "
-#             f"rank={multipv_rank}, top_gap={top_gap if top_gap is not None else 'N/A'} cp, CPL={cpl}"
-#         )
-
-#         # --- sacrifice check ---
-#         original_board = chess.Board(fen)
-#         uci_move = chess.Move.from_uci(move)
-#         is_sacrifice = is_real_sacrifice(original_board, uci_move)
-
-#         # --- mate metadata (pre/post) ---
-#         pre_score   = pre[0]["score"]
-#         post_score  = post[0]["score"]
-#         best_mate_in   = mate_ply(pre_score)      # mate-in-N in best line BEFORE
-#         played_mate_in = mate_ply(post_score)     # mate-in-N AFTER played move
-
-#         pre_is_mate  = (pre_score.get("type")  == "mate")
-#         post_is_mate = (post_score.get("type") == "mate")
-
-#         # Mate ownership flip (winning mate → losing mate or vice versa)
-#         mate_flip = bool(pre_is_mate and post_is_mate and (eval_before_cp * eval_after_cp < 0))
-#         mate_flip_severity = 0
-#         if mate_flip:
-#             # heavy severity so it always overrides CPL-based labels
-#             mate_flip_severity = 6400 + 100 * ((best_mate_in or 0) + (played_mate_in or 0))
-
-#         # --- missed mate detection (pre-best vs post) ---
-#         still_winning = eval_after_cp is not None and (eval_after_cp >= MISS_STILL_WINNING_CP)
-#         forgone = False
-#         if best_mate_in is not None:
-#             # missed if mate disappears OR gets slower by more than tolerance
-#             forgone = (played_mate_in is None) or (played_mate_in > best_mate_in + MISS_TOLERANCE_PLIES)
-
-#         big_gap = (top_gap is not None and (top_gap >= MISS_MIN_GAP_CP))
-#         miss_mate = bool(best_mate_in is not None and forgone and still_winning and big_gap)
-
-#         # a simple severity score for miss (handy for calibration/UX)
-#         mate_miss_severity = 0.0
-#         if miss_mate:
-#             mate_miss_severity = float(top_gap or 0) + 200.0 * float((played_mate_in or 99) - best_mate_in)
-
-#         is_book = False
-#         gap_for_label = top_gap if top_gap is not None else 0
-
-#         if mate_flip:
-#             # Check direction of flip
-#             if eval_before_cp > 0 and eval_after_cp < 0:
-#                 label = "Blunder"   # lost winning mate
-#             elif eval_before_cp < 0 and eval_after_cp > 0:
-#                 label = "Brilliant" # saved from mate or turned it around
-#             else:
-#                 label = label_move(
-#                     fen, move, eval_before_cp, eval_after_cp, multipv_rank,
-#                     is_sacrifice, is_book, gap_for_label
-#                 )
-#         elif miss_mate:
-#             label = "Miss"
-#         else:
-#             label = label_move(
-#                 fen, move, eval_before_cp, eval_after_cp, multipv_rank,
-#                 is_sacrifice, is_book, gap_for_label
-#             )
-
-
-#         return jsonify({
-#             "fen_before": fen_before,
-#             "eval_before": eval_before_cp,
-#             "eval_after":  eval_after_cp,
-#             "eval_change": eval_change,
-#             "multipv_rank": multipv_rank,
-#             "top_gap": top_gap,             # gap vs best (pre); equals CPL when move found
-#             "cpl": cpl,                     # chess.com-style centipawn loss
-#             "eval_before_struct": pre_score,
-#             "eval_after_struct":  post_score,
-#             "is_sacrifice": is_sacrifice,
-
-#             # mate-related outputs
-#             "best_mate_in": best_mate_in,
-#             "played_mate_in": played_mate_in,
-#             "miss_mate": miss_mate,
-#             "mate_miss_severity": mate_miss_severity,
-#             "mate_flip": mate_flip,
-#             "mate_flip_severity": mate_flip_severity,
-
-#             "label": label
-#         })
-
-#     except Exception as e:
-#         logger.error(f"Error in /evaluate: {str(e)}", exc_info=True)
-#         return jsonify({"error": str(e)}), 500
 
 # ----------------------------
 # Entrypoint
