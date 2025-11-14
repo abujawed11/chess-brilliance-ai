@@ -36,6 +36,18 @@ PIECE_VALUES = {
     chess.KING: 0,
 }
 
+
+
+
+
+
+MIN_SAC_CP       = 300   # at least a minor piece effectively at risk
+MIN_SEE_LOSS_CP  = 100   # SEE must say we lose ≥ 1 pawn locally
+ATTACK_GAIN_CP   = 150   # if eval improves more than this, treat as attack, not "sac"
+MATE_THRESHOLD   = 20000 # same idea as your existing mate cp mapping
+
+
+
 def piece_cp(board: chess.Board, sq: chess.Square) -> int:
     p = board.piece_at(sq)
     return PIECE_VALUES.get(p.piece_type, 0) if p else 0
@@ -72,84 +84,186 @@ def naive_see(board: chess.Board, square: chess.Square, side_to_move: bool) -> i
     return gain[0] if gain else 0
 
 
-MIN_SAC_CP = 100
-
 
 def is_real_sacrifice(
     board_before: chess.Board,
     move: chess.Move,
-    eval_before=None,
-    eval_after=None,
-    eval_types=None
+    *,
+    eval_before_white: float | None = None,
+    eval_after_white: float | None = None,
+    mover_color: str | None = None,
+    eval_types: dict | None = None,
 ) -> bool:
     """
-    Sacrifice detection using SEE + material debit.
+    Sacrifice detection tuned for your brilliancy system.
 
-    NOTE: In forced mate sequences, we don't count "undefended" pieces as sacrifices
-    because the opponent doesn't have time to capture them.
+    True  -> move is a *material sacrifice* (non-trivial material put on a losing square)
+    False -> no real material sacrifice
+
+    Uses:
+      - material debit (moved piece - captured piece)
+      - naive_see() on the destination square
+      - optional eval info to *exclude*:
+          * forced mate clean-up sequences
+          * huge eval-improving attack moves (attack brilliancy, not sac)
     """
+
     board = board_before.copy()
     mover = board.turn
     from_sq, to_sq = move.from_square, move.to_square
-    moved_piece = board.piece_at(from_sq)
+
+    moved_piece = board_before.piece_at(from_sq)
     if moved_piece is None:
         return False
 
-    moved_cp    = PIECE_VALUES[moved_piece.piece_type]
-    captured_cp = piece_cp(board, to_sq)
+    moved_cp = PIECE_VALUES[moved_piece.piece_type]
+    if moved_cp == 0:
+        # Kings / nonsense: not a sacrifice
+        return False
+
+    captured_cp = piece_cp(board_before, to_sq)
 
     # Handle en passant capture
     if board_before.is_en_passant(move):
         captured_cp = PIECE_VALUES[chess.PAWN]
 
-    see_net_for_mover = naive_see(board_before, to_sq, mover)
-    gives_check = board.gives_check(move)
-
-    board.push(move)
-
     net_loss_cp = moved_cp - captured_cp
-    opp_can_capture_back = board.is_attacked_by(not mover, to_sq)
+    if net_loss_cp < MIN_SAC_CP:
+        # Not enough material at stake to count as a "sac" for brilliancy
+        return False
 
-    # --- Special case: Forced mate sequences ---
-    # If both before and after are mate scores and we're improving or maintaining mate,
-    # this is NOT a sacrifice - it's a forced sequence where opponent has no time to capture.
+    # Local static-exchange evaluation on destination square
+    see_net_for_mover = naive_see(board_before, to_sq, mover)
+
+    # If SEE says we are not really losing there, it's not a material sacrifice.
+    if see_net_for_mover >= -MIN_SEE_LOSS_CP:
+        return False
+
+    # --- Forced mate sequences: don't call every mating move a 'sac' ---
     mate_before = (eval_types and eval_types.get("before") == "mate")
     mate_after  = (eval_types and eval_types.get("after")  == "mate")
 
-    MATE_THRESHOLD = 20000  # Approximate threshold for mate scores (adjust based on your MATE_CP)
-
     is_forced_mate_sequence = False
-    if eval_before is not None and eval_after is not None:
-        # Check if both evals are in mate territory (very high absolute values)
-        if abs(eval_before) >= MATE_THRESHOLD and abs(eval_after) >= MATE_THRESHOLD:
-            # Check if we're maintaining or improving our mate (same sign, similar or better eval)
-            same_side_advantage = (eval_before * eval_after > 0)  # same sign
-            if same_side_advantage:
+    if eval_before_white is not None and eval_after_white is not None:
+        if abs(eval_before_white) >= MATE_THRESHOLD and abs(eval_after_white) >= MATE_THRESHOLD:
+            if eval_before_white * eval_after_white > 0:  # same side mating
                 is_forced_mate_sequence = True
 
     if is_forced_mate_sequence:
-        print(f"[SAC DEBUG] Forced mate sequence detected - NOT counting as sacrifice")
-        print(f"  eval_before: {eval_before}, eval_after: {eval_after}")
+        # Mate-in-N clean-up (no real time to accept the material) -> not a 'sac'
         return False
 
-    # Gate A: debit + opponent can accept + SEE < 0
-    if net_loss_cp >= MIN_SAC_CP and opp_can_capture_back and see_net_for_mover < 0:
-        print(f"[SAC DEBUG] Gate A triggered: net_loss={net_loss_cp}, SEE={see_net_for_mover}")
-        return True
-
-    # Gate B: destination square is simply losing via SEE
-    if see_net_for_mover < 0:
-        print(f"[SAC DEBUG] Gate B triggered: SEE={see_net_for_mover} (losing exchange)")
-        return True
-
-    # Gate C: forcing sac (check/mate) with acceptability
-    if (gives_check or mate_after or mate_before) and (
-        see_net_for_mover < 0 or (opp_can_capture_back and net_loss_cp >= MIN_SAC_CP)
+    # --- Filter out pure attack-brilliancy where eval jumps UP a lot ---
+    if (
+        eval_before_white is not None and
+        eval_after_white is not None and
+        mover_color is not None
     ):
-        print(f"[SAC DEBUG] Gate C triggered: forcing move with material commitment")
-        return True
+        before_pov = cp_for_player(eval_before_white, mover_color)
+        after_pov  = cp_for_player(eval_after_white,  mover_color)
+        eval_gain  = after_pov - before_pov
 
-    return False
+        # If the move *greatly* improves our eval, we treat it as an attack brilliancy
+        # (your detect_brilliancy_level will already catch it),
+        # but not as a "material sacrifice" for !!.
+        if eval_gain >= ATTACK_GAIN_CP:
+            return False
+
+    # If we reach here:
+    # - non-trivial material debit
+    # - SEE says the square is locally losing
+    # - not just forced-mate clean-up
+    # - not a huge eval-improving attack move
+    return True
+
+
+
+
+
+
+
+# MIN_SAC_CP = 100
+
+
+
+
+
+
+# def is_real_sacrifice(
+#     board_before: chess.Board,
+#     move: chess.Move,
+#     eval_before=None,
+#     eval_after=None,
+#     eval_types=None
+# ) -> bool:
+#     """
+#     Sacrifice detection using SEE + material debit.
+
+#     NOTE: In forced mate sequences, we don't count "undefended" pieces as sacrifices
+#     because the opponent doesn't have time to capture them.
+#     """
+#     board = board_before.copy()
+#     mover = board.turn
+#     from_sq, to_sq = move.from_square, move.to_square
+#     moved_piece = board.piece_at(from_sq)
+#     if moved_piece is None:
+#         return False
+
+#     moved_cp    = PIECE_VALUES[moved_piece.piece_type]
+#     captured_cp = piece_cp(board, to_sq)
+
+#     # Handle en passant capture
+#     if board_before.is_en_passant(move):
+#         captured_cp = PIECE_VALUES[chess.PAWN]
+
+#     see_net_for_mover = naive_see(board_before, to_sq, mover)
+#     gives_check = board.gives_check(move)
+
+#     board.push(move)
+
+#     net_loss_cp = moved_cp - captured_cp
+#     opp_can_capture_back = board.is_attacked_by(not mover, to_sq)
+
+#     # --- Special case: Forced mate sequences ---
+#     # If both before and after are mate scores and we're improving or maintaining mate,
+#     # this is NOT a sacrifice - it's a forced sequence where opponent has no time to capture.
+#     mate_before = (eval_types and eval_types.get("before") == "mate")
+#     mate_after  = (eval_types and eval_types.get("after")  == "mate")
+
+#     MATE_THRESHOLD = 20000  # Approximate threshold for mate scores (adjust based on your MATE_CP)
+
+#     is_forced_mate_sequence = False
+#     if eval_before is not None and eval_after is not None:
+#         # Check if both evals are in mate territory (very high absolute values)
+#         if abs(eval_before) >= MATE_THRESHOLD and abs(eval_after) >= MATE_THRESHOLD:
+#             # Check if we're maintaining or improving our mate (same sign, similar or better eval)
+#             same_side_advantage = (eval_before * eval_after > 0)  # same sign
+#             if same_side_advantage:
+#                 is_forced_mate_sequence = True
+
+#     if is_forced_mate_sequence:
+#         print(f"[SAC DEBUG] Forced mate sequence detected - NOT counting as sacrifice")
+#         print(f"  eval_before: {eval_before}, eval_after: {eval_after}")
+#         return False
+
+#     # Gate A: debit + opponent can accept + SEE < 0
+#     if net_loss_cp >= MIN_SAC_CP and opp_can_capture_back and see_net_for_mover < 0:
+#         print(f"[SAC DEBUG] Gate A triggered: net_loss={net_loss_cp}, SEE={see_net_for_mover}")
+#         return True
+
+#     # Gate B: destination square is simply losing via SEE
+#     if see_net_for_mover < 0:
+#         print(f"[SAC DEBUG] Gate B triggered: SEE={see_net_for_mover} (losing exchange)")
+#         return True
+
+#     # Gate C: forcing sac (check/mate) with acceptability
+#     if (gives_check or mate_after or mate_before) and (
+#         see_net_for_mover < 0 or (opp_can_capture_back and net_loss_cp >= MIN_SAC_CP)
+#     ):
+#         print(f"[SAC DEBUG] Gate C triggered: forcing move with material commitment")
+#         return True
+
+#     return False
 
 def cp_for_player(eval_white_cp: float, mover_color: str) -> float:
     """
@@ -850,12 +964,12 @@ def detect_brilliancy_level(
     # Pattern A2: Sacrifice-based brilliancy (already winning -> stay winning)
     # (custom pattern for sacrifice moves that maintain winning advantage)
     # -----------------------------------------------------------------------
-    if is_sacrifice:
-        # Must be at least clearly better before and after
-        if before_pov >= 300 and after_pov >= 300:
-            # Engine should not hate the move (looser gap tolerance for sacrifices)
-            if best_pov is None or (gap_to_best is not None and abs(gap_to_best) <= 120):
-                return make_result("attack")
+    # if is_sacrifice:
+    #     # Must be at least clearly better before and after
+    #     if before_pov >= 300 and after_pov >= 300:
+    #         # Engine should not hate the move (looser gap tolerance for sacrifices)
+    #         if best_pov is None or (gap_to_best is not None and abs(gap_to_best) <= 120):
+    #             return make_result("attack")
 
     # -----------------------------------------------------------------------
     # Pattern B: Defensive brilliancy (lost -> drawable/ok)
@@ -921,6 +1035,24 @@ def detect_brilliancy_level(
             if after_pov - before_pov >= params.defense_min_rescue_gain_cp:
                 if best_pov is None or near_best_mate_pattern():
                     return make_result("mate_flip")
+                
+    # -----------------------------------------------------------------------
+    # Pattern E: Pure sacrifice brilliancy in a winning position
+    #
+    # For cases like your Rd8!!:
+    # - already clearly better
+    # - make a genuine sacrifice
+    # - stay clearly better
+    # - engine still likes the move (small gap to best)
+    # - eval doesn't need to improve much (or at all)
+    # -----------------------------------------------------------------------
+    if is_sacrifice:
+        # Must be at least clearly better before and after
+        if before_pov >= 300 and after_pov >= 300:
+            # Engine should not hate the move
+            if best_pov is None or (gap_to_best is not None and abs(gap_to_best) <= 120):
+                return make_result("attack")
+
     
 
     # -----------------------------------------------------------------------

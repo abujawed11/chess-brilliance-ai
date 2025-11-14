@@ -430,7 +430,8 @@
                     <div class="opacity-80">Mate Flip?</div>
                     <div id="mateFlip">-</div>
 
-
+                    <div class="opacity-80">Label</div>
+                    <div id="label">-</div>
                     <div class="opacity-80">Phase:</div>
                     <div id="phaseTag">-</div>
                 </div>
@@ -618,6 +619,10 @@
             if (missMateEl) missMateEl.textContent = data.miss_mate ? 'Yes' : 'No';
             if (mateFlipEl) mateFlipEl.textContent = data.mate_flip ? 'Yes' : 'No';
 
+            // Set label from server
+            const labelEl = document.getElementById('label');
+            if (labelEl) labelEl.textContent = data.label ?? '-';
+
         }
 
         function appendRow(sample) {
@@ -646,6 +651,7 @@
         <td>${sample.played_mate_in ?? '—'}</td>
         <td>${sample.miss_mate ? 'Yes' : 'No'}</td>
         <td>${sample.mate_flip ? 'Yes' : 'No'}</td>
+        <td>${sample.chesscom_label}</td>
         <td>${sample.phase}</td>`;
             const sel = tr.querySelector('select');
             sel.addEventListener('change', () => { samples[idx].chesscom_label = sel.value; saveSamplesToStorage(); });
@@ -785,10 +791,17 @@
             const phaseBefore = phaseFromMaterial(new Chess(fenBefore), moveIndex);
 
             const sample = {
-                fen: fenBefore, move: moveUci, chesscom_label: sel.value,
-                eval_before_cp: eb, eval_after_cp: ea,
-                cpl: cplVal, top_gap: gap, multipv_rank: rank,
-                is_sacrifice: isSac, is_mate_before: isMateB, is_mate_after: isMateA,
+                fen: fenBefore, 
+                move: moveUci, 
+                chesscom_label: sel.value,
+                eval_before_cp: eb, 
+                eval_after_cp: ea,
+                cpl: cplVal, 
+                top_gap: gap, 
+                multipv_rank: rank,
+                is_sacrifice: isSac, 
+                is_mate_before: isMateB, 
+                is_mate_after: isMateA,
                 phase: phaseBefore,
                 // best_mate_in: lastEvaluatedData.best_mate_in ?? null,
                 // played_mate_in: lastEvaluatedData.played_mate_in ?? null,

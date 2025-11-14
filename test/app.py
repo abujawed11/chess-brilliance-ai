@@ -709,95 +709,6 @@ def eval_for_white(score: dict, side_to_move: str) -> int:
         return 0
 
 
-# def piece_cp(board: chess.Board, sq: chess.Square) -> int:
-#     p = board.piece_at(sq)
-#     return PIECE_VALUES.get(p.piece_type, 0) if p else 0
-
-
-# def naive_see(board: chess.Board, square: chess.Square, side_to_move: bool) -> int:
-#     """
-#     Very small static-exchange eval on `square`.
-#     Returns net cp for `side_to_move` assuming optimal local swaps.
-#     """
-#     def attackers(side):
-#         return sorted(
-#             (sq for sq in board.attackers(side, square)),
-#             key=lambda s: PIECE_VALUES[board.piece_at(s).piece_type]
-#         )
-
-#     gain = []
-#     occupied = set()
-#     color = side_to_move
-#     target_value = piece_cp(board, square)  # 0 if quiet
-
-#     while True:
-#         atk = [s for s in attackers(color) if s not in occupied]
-#         if not atk:
-#             break
-#         from_sq = atk[0]  # least valuable attacker
-#         gain.append(target_value)
-#         target_value = PIECE_VALUES[board.piece_at(from_sq).piece_type]
-#         occupied.add(from_sq)
-#         color = not color
-
-#     for i in range(len(gain) - 2, -1, -1):
-#         gain[i] = -max(-gain[i], gain[i + 1])
-#     return gain[0] if gain else 0
-
-
-# MIN_SAC_CP = 100
-
-
-# def is_real_sacrifice(
-#     board_before: chess.Board,
-#     move: chess.Move,
-#     eval_before=None,
-#     eval_after=None,
-#     eval_types=None
-# ) -> bool:
-#     """
-#     Sacrifice detection using SEE + material debit.
-#     """
-#     board = board_before.copy()
-#     mover = board.turn
-#     from_sq, to_sq = move.from_square, move.to_square
-#     moved_piece = board.piece_at(from_sq)
-#     if moved_piece is None:
-#         return False
-
-#     moved_cp    = PIECE_VALUES[moved_piece.piece_type]
-#     captured_cp = piece_cp(board, to_sq)
-
-#     # Handle en passant capture
-#     if board_before.is_en_passant(move):
-#         captured_cp = PIECE_VALUES[chess.PAWN]
-
-#     see_net_for_mover = naive_see(board_before, to_sq, mover)
-#     gives_check = board.gives_check(move)
-
-#     board.push(move)
-
-#     net_loss_cp = moved_cp - captured_cp
-#     opp_can_capture_back = board.is_attacked_by(not mover, to_sq)
-
-#     # Gate A: debit + opponent can accept + SEE < 0
-#     if net_loss_cp >= MIN_SAC_CP and opp_can_capture_back and see_net_for_mover < 0:
-#         return True
-
-#     # Gate B: destination square is simply losing via SEE
-#     if see_net_for_mover < 0:
-#         return True
-
-#     # Gate C: forcing sac (check/mate) with acceptability
-#     mate_before = (eval_types and eval_types.get("before") == "mate")
-#     mate_after  = (eval_types and eval_types.get("after")  == "mate")
-#     if (gives_check or mate_after or mate_before) and (
-#         see_net_for_mover < 0 or (opp_can_capture_back and net_loss_cp >= MIN_SAC_CP)
-#     ):
-#         return True
-
-#     return False
-
 
 def played_rank_and_gap(uci_move, pvs, side_to_move: str):
     """
@@ -1014,13 +925,22 @@ def evaluate_move():
             "after": post_score.get("type") if post_score else None,
         }
 
+        # is_sacrifice = is_real_sacrifice(
+        #     board_before=board_before,
+        #     move=uci_move_obj,
+        #     # eval_before=eval_before_cp,
+        #     # eval_after=eval_after_cp,
+        #     # eval_types=eval_types_dict
+        # )
         is_sacrifice = is_real_sacrifice(
             board_before=board_before,
             move=uci_move_obj,
-            eval_before=eval_before_cp,
-            eval_after=eval_after_cp,
-            eval_types=eval_types_dict
+            eval_before_white=eval_before_cp,
+            eval_after_white=eval_after_cp,
+            mover_color=side_before,
+            eval_types=eval_types_dict,
         )
+
 
         print("SAC DEBUG:", {
             "is_sacrifice": is_sacrifice,
