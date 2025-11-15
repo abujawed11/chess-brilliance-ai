@@ -235,14 +235,15 @@ def situation_from_cp(cp_player: float) -> str:
 # 2) Base label from CPL only
 # ---------------------------------------------------------------------------
 
-LABEL_ORDER = ["Best", "Good", "Inaccuracy", "Mistake", "Blunder"]
+# Order from best to worst:
+LABEL_ORDER = ["Best", "Excellent", "Good", "Inaccuracy", "Mistake", "Blunder"]
 LABEL_RANK = {name: i for i, name in enumerate(LABEL_ORDER)}
 
 
 def base_label_from_cpl(cpl: float | None, multipv_rank: int | None) -> str:
     """
     Raw engine severity → one of:
-        Best / Good / Inaccuracy / Mistake / Blunder
+        Best / Excellent / Good / Inaccuracy / Mistake / Blunder
 
     cpl:
         Centipawn loss vs engine best (>= 0, already absolute).
@@ -253,14 +254,20 @@ def base_label_from_cpl(cpl: float | None, multipv_rank: int | None) -> str:
         # Fail-safe: if something went wrong, treat as Inaccuracy
         return "Inaccuracy"
 
-    # Near-perfect moves
-    if cpl <= 20:
+    # Very near-perfect moves
+    if cpl <= 10:
         # If it's literally PV#1, call it Best,
-        # otherwise it's still very strong (Good).
-        return "Best" if (multipv_rank == 1) else "Good"
+        # otherwise it's still almost perfect (Excellent).
+        return "Best" if (multipv_rank == 1) else "Excellent"
 
-    if cpl <= 60:
+    # Still extremely accurate: only a tiny CPL loss
+    if cpl <= 30:
+        return "Excellent"
+
+    # Solid moves: you lost a bit more but still fine
+    if cpl <= 80:
         return "Good"
+
     if cpl <= 200:
         return "Inaccuracy"
     if cpl <= 500:
@@ -295,7 +302,7 @@ def soften_label(current: str, maximum: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 3) Main classifier for the core 5 labels
+# 3) Main classifier for the core 6 labels
 # ---------------------------------------------------------------------------
 
 def classify_basic_move(
@@ -306,8 +313,8 @@ def classify_basic_move(
     multipv_rank: int | None,   # 1..K or None if unknown
 ) -> str:
     """
-    Core 5-type classifier:
-        Best / Good / Inaccuracy / Mistake / Blunder
+    Core 6-type classifier:
+        Best / Excellent / Good / Inaccuracy / Mistake / Blunder
 
     Args:
         eval_before_white:
@@ -378,16 +385,212 @@ def classify_basic_move(
             if LABEL_RANK[label] > LABEL_RANK["Good"]:
                 label = "Good"
 
-            
-        # ---------- 6) Already totally winning (soften a bit, symmetric to Lost->Lost) ----------
+    # ---------- 6) Already totally winning (soften a bit, symmetric to Lost->Lost) ----------
     if before_state == "Won" and after_state == "Won":
         # Don't spam blunders when you're +10 and stay +10/+12
         label = soften_label(label, "Mistake")   # cap at Mistake
         if label == "Mistake" and cpl <= 250:
             label = "Inaccuracy"
-    print("before",before_state,"after state",after_state)
+
+    print("before", before_state, "after state", after_state)
 
     return label
+
+
+
+
+##-----------------------Working------------------
+
+# def cp_for_player(eval_white_cp: float, mover_color: str) -> float:
+#     """
+#     Convert White-centric eval to mover-centric eval.
+
+#     eval_white_cp: evaluation from White's perspective (Stockfish style)
+#     mover_color:   'w' if White just moved, 'b' if Black just moved
+
+#     Returns:
+#         cp where:
+#             +ve = good for the mover,
+#             -ve = bad for the mover.
+#     """
+#     return eval_white_cp if mover_color == 'w' else -eval_white_cp
+
+
+# def situation_from_cp(cp_player: float) -> str:
+#     """
+#     Bucket the mover's position into rough game states, using
+#     evaluation from the mover's perspective (cp_player).
+
+#     Tunable thresholds, but these are a good starting point.
+#     """
+#     if cp_player >= 800:
+#         return "Won"          # totally winning (e.g. +8.0 or more)
+#     if cp_player >= 300:
+#         return "Winning"      # clearly better
+#     if cp_player > -300:
+#         return "Equalish"     # roughly equal / unclear
+#     if cp_player > -800:
+#         return "Worse"        # clearly worse
+#     return "Lost"             # basically busted
+
+
+# # ---------------------------------------------------------------------------
+# # 2) Base label from CPL only
+# # ---------------------------------------------------------------------------
+
+# LABEL_ORDER = ["Best", "Good", "Inaccuracy", "Mistake", "Blunder"]
+# LABEL_RANK = {name: i for i, name in enumerate(LABEL_ORDER)}
+
+
+# def base_label_from_cpl(cpl: float | None, multipv_rank: int | None) -> str:
+#     """
+#     Raw engine severity → one of:
+#         Best / Good / Inaccuracy / Mistake / Blunder
+
+#     cpl:
+#         Centipawn loss vs engine best (>= 0, already absolute).
+#     multipv_rank:
+#         1 if played move is engine PV #1, else >1 or None.
+#     """
+#     if cpl is None:
+#         # Fail-safe: if something went wrong, treat as Inaccuracy
+#         return "Inaccuracy"
+
+#     # Near-perfect moves
+#     if cpl <= 20:
+#         # If it's literally PV#1, call it Best,
+#         # otherwise it's still very strong (Good).
+#         return "Best" if (multipv_rank == 1) else "Good"
+
+#     if cpl <= 60:
+#         return "Good"
+#     if cpl <= 200:
+#         return "Inaccuracy"
+#     if cpl <= 500:
+#         return "Mistake"
+#     return "Blunder"
+
+
+# def promote_label(current: str, minimum: str) -> str:
+#     """
+#     Ensure label is at least as severe as 'minimum' (towards Blunder).
+
+#     Example:
+#         promote_label("Inaccuracy", "Mistake") -> "Mistake"
+#         promote_label("Blunder", "Mistake")    -> "Blunder"
+#     """
+#     if LABEL_RANK[current] < LABEL_RANK[minimum]:
+#         return minimum
+#     return current
+
+
+# def soften_label(current: str, maximum: str) -> str:
+#     """
+#     Cap label so it is no more severe than 'maximum'.
+
+#     Example:
+#         soften_label("Blunder", "Mistake") -> "Mistake"
+#         soften_label("Good", "Mistake")    -> "Good"
+#     """
+#     if LABEL_RANK[current] > LABEL_RANK[maximum]:
+#         return maximum
+#     return current
+
+
+# # ---------------------------------------------------------------------------
+# # 3) Main classifier for the core 5 labels
+# # ---------------------------------------------------------------------------
+
+# def classify_basic_move(
+#     eval_before_white: float,
+#     eval_after_white: float,
+#     cpl: float | None,
+#     mover_color: str,           # 'w' or 'b'
+#     multipv_rank: int | None,   # 1..K or None if unknown
+# ) -> str:
+#     """
+#     Core 5-type classifier:
+#         Best / Good / Inaccuracy / Mistake / Blunder
+
+#     Args:
+#         eval_before_white:
+#             Engine eval BEFORE the move, from WHITE's perspective (cp).
+#         eval_after_white:
+#             Engine eval AFTER the move, from WHITE's perspective (cp).
+#         cpl:
+#             Centipawn loss vs engine best from the PRE position (>= 0 or None).
+#         mover_color:
+#             Which side made the move: 'w' for White, 'b' for Black.
+#         multipv_rank:
+#             Rank of the played move in the PRE multiPV (1 = engine best).
+#     """
+
+#     # ---------- Convert to player POV ----------
+#     player_before = cp_for_player(eval_before_white, mover_color)
+#     player_after  = cp_for_player(eval_after_white,  mover_color)
+#     player_delta  = player_after - player_before   # >0 helped mover, <0 hurt mover
+
+#     before_state = situation_from_cp(player_before)
+#     after_state  = situation_from_cp(player_after)
+
+#     # Normalize CPL
+#     if cpl is None:
+#         # crude fallback: at least use how much eval changed for the mover
+#         cpl = abs(player_delta)
+
+#     # ---------- 1) Base label from CPL ----------
+#     label = base_label_from_cpl(cpl, multipv_rank)
+
+#     # ---------- 2) Throwing away a win (punish harder) ----------
+#     if before_state in ("Winning", "Won") and after_state in ("Equalish", "Worse", "Lost"):
+#         # You were clearly better, now not anymore
+#         if cpl >= 300:
+#             label = promote_label(label, "Blunder")
+#         elif cpl >= 200:
+#             label = promote_label(label, "Mistake")
+
+#     # ---------- 3) Already totally lost (soften a bit) ----------
+#     if before_state == "Lost" and after_state == "Lost":
+#         # Don’t spam blunders in a -10 vs -12 type position
+#         label = soften_label(label, "Mistake")   # cap at Mistake
+#         if label == "Mistake" and cpl <= 250:
+#             label = "Inaccuracy"
+
+#     # ---------- 4) Normal positions: tweak by player_delta ----------
+#     # Large improvement for mover → be kinder than pure CPL
+#     if player_delta >= 100:  # mover improved by ≥ 1 pawn
+#         if label == "Blunder":
+#             label = "Mistake"
+#         elif label == "Mistake":
+#             label = "Inaccuracy"
+#         elif label == "Inaccuracy":
+#             label = "Good"
+
+#     # Large worsening for mover → be harsher
+#     if player_delta <= -150:  # mover worsened by ≥ 1.5 pawns
+#         if label == "Good":
+#             label = "Inaccuracy"
+#         elif label == "Inaccuracy" and cpl >= 150:
+#             label = "Mistake"
+
+#     # ---------- 5) Huge rescue (optional but nice) ----------
+#     # From completely lost to at least "not dead" with big improvement
+#     if before_state == "Lost" and after_state in ("Equalish", "Winning", "Won"):
+#         if player_delta >= 300:  # improved by ≥ 3 pawns
+#             # Never call such a move worse than Good
+#             if LABEL_RANK[label] > LABEL_RANK["Good"]:
+#                 label = "Good"
+
+            
+#         # ---------- 6) Already totally winning (soften a bit, symmetric to Lost->Lost) ----------
+#     if before_state == "Won" and after_state == "Won":
+#         # Don't spam blunders when you're +10 and stay +10/+12
+#         label = soften_label(label, "Mistake")   # cap at Mistake
+#         if label == "Mistake" and cpl <= 250:
+#             label = "Inaccuracy"
+#     print("before",before_state,"after state",after_state)
+
+#     return label
 
 
 
