@@ -298,8 +298,8 @@
 #         logger.info(f"Engine file exists: {os.path.exists(ENGINE_PATH)}")
 
 #         logger.info("Starting persistent Stockfish engine...")
-#         hash_mb = 512
-#         threads = 2
+#         hash_mb = 2048
+#         threads = 8
 #         persistent_engine = start_engine({"Hash": hash_mb, "Threads": threads})
 #         logger.info(f"Stockfish engine started (Hash={hash_mb}MB, Threads={threads})")
 #         return jsonify({"status": "started", "message": "Engine started successfully"})
@@ -591,12 +591,19 @@ env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path, override=True)
 
 # Explicitly set STOCKFISH_PATH if not already set
+# if not os.getenv('STOCKFISH_PATH'):
+#     stockfish_path = os.path.join(project_root, 'engine', 'stockfish.exe')
+#     os.environ['STOCKFISH_PATH'] = stockfish_path
+#     print(f"[WARNING] STOCKFISH_PATH not in env, setting to: {stockfish_path}")
+# else:
+#     print(f"[OK] STOCKFISH_PATH loaded: {os.getenv('STOCKFISH_PATH')}")
+
 if not os.getenv('STOCKFISH_PATH'):
-    stockfish_path = os.path.join(project_root, 'engine', 'stockfish.exe')
-    os.environ['STOCKFISH_PATH'] = stockfish_path
-    print(f"[WARNING] STOCKFISH_PATH not in env, setting to: {stockfish_path}")
+    os.environ['STOCKFISH_PATH'] = "/usr/local/bin/stockfish"
+    print(f"[WARNING] STOCKFISH_PATH not in env, setting to: /usr/local/bin/stockfish")
 else:
     print(f"[OK] STOCKFISH_PATH loaded: {os.getenv('STOCKFISH_PATH')}")
+
 
 # ----------------------------
 # Imports
@@ -1068,4 +1075,5 @@ def evaluate_move():
 # Entrypoint
 # ----------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)
+
