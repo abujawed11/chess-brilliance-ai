@@ -20,6 +20,7 @@ chess_brilliance_ai
 │     ├─ Beliavsky.pgn
 │     ├─ Benjamin.pgn
 │     └─ Benko.pgn
+├─ README.md
 ├─ requirements.txt
 ├─ setup_chess_brilliance_ai.ps1
 ├─ student
@@ -36,19 +37,20 @@ chess_brilliance_ai
 ├─ test
 │  ├─ app.py
 │  ├─ AUTO_ANALYSIS_GUIDE.md
+│  ├─ basic_move_labels.py
 │  ├─ brilliant.html
 │  ├─ CALIBRATION_README.md
 │  ├─ callibrator samples
 │  │  ├─ calibration_samples_1.json
 │  │  └─ calibration_samples_2.json
 │  ├─ callibrator.html
-│  ├─ chess_helpers.py
 │  ├─ collect_test_data.py
 │  ├─ DIAMOND_MEMBER_GUIDE.md
 │  ├─ FEATURE_SUMMARY.md
 │  ├─ FEN_AUTOANALYSIS_GUIDE.md
 │  ├─ fetch_master_brilliancies.py
 │  ├─ MANUAL_COLLECTION_GUIDE.md
+│  ├─ opening_book.py
 │  ├─ requirements.txt
 │  ├─ requirements_test.txt
 │  ├─ scrape_chesscom_games.py
