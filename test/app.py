@@ -879,8 +879,26 @@ def evaluate_move():
         board_after = board_before.copy()
         board_after.push_uci(move)
         post_fen = board_after.fen()
-        post = analyze_or_fail(post_fen, depth, 1, persistent_engine)
-        post_score = post[0]["score"]
+
+        # Check if the position is game over (checkmate, stalemate, etc.)
+        if board_after.is_checkmate():
+            # Checkmate: the side to move is mated
+            # Use mate value of -1 to indicate the side to move has been checkmated
+            # (mate in 1 against them = already mated)
+            post_score = {"type": "mate", "value": -1}
+            logger.info(f"Position after move is CHECKMATE")
+        elif board_after.is_stalemate():
+            # Stalemate: position is drawn, eval = 0
+            post_score = {"type": "cp", "value": 0}
+            logger.info(f"Position after move is STALEMATE")
+        elif board_after.is_game_over():
+            # Other game over (insufficient material, repetition, 50-move rule, etc.)
+            post_score = {"type": "cp", "value": 0}
+            logger.info(f"Position after move is GAME OVER (draw)")
+        else:
+            # Normal position: analyze with engine
+            post = analyze_or_fail(post_fen, depth, 1, persistent_engine)
+            post_score = post[0]["score"]
 
         side_after = "w" if board_after.turn == chess.WHITE else "b"
         eval_after_cp = eval_for_white(post_score, side_after)
