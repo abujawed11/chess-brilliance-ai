@@ -785,8 +785,8 @@ def start_engine_endpoint():
         logger.info(f"Engine file exists: {os.path.exists(ENGINE_PATH)}")
 
         logger.info("Starting persistent Stockfish engine...")
-        hash_mb = 512
-        threads = 2
+        hash_mb = 2048
+        threads = 8
         persistent_engine = start_engine({"Hash": hash_mb, "Threads": threads})
         logger.info(f"Stockfish engine started (Hash={hash_mb}MB, Threads={threads})")
         return jsonify({"status": "started", "message": "Engine started successfully"})
